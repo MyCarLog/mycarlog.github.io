@@ -1,0 +1,2504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Car Log - Multi-Car & Maintenance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0F2230">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- SheetJS for Excel Import/Export with Dynamic Formulas -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+
+<style>
+:root{
+  --bg:#E7EBEF; --surface:#FFFFFF; --surface-2:#F1F4F7; --ink:#0F2230; --ink-2:#51636F; --line:#D5DCE2;
+  --company:#2C52C4; --self:#B05200; --pa1:#2B7A4B; --pa2:#7A3FB0; --pa3:#00796B; --pa4:#B0306A; --pa5:#6B7A00; --pa6:#5D4037; --ok:#2B7A4B; --soon:#8A6200; --soon-fill:#E0A800; --late:#B3261E;
+  --btn:#0F2230; --btn-ink:#FFFFFF; --focus:#2C52C4; --housing:#0F2230; --bar-track:#DCE3E8;
+  --font-body:'Public Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-display:'Chakra Petch','Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C141B; --surface:#141F28; --surface-2:#1B2833; --ink:#E8F0F5; --ink-2:#9DB0BD; --line:#2A3946;
+    --company:#8EA8FF; --self:#FFA24D; --pa1:#63C48E; --pa2:#C79BFF; --pa3:#4DD0C4; --pa4:#FF8FB8; --pa5:#C8D94A; --pa6:#C9A79B; --ok:#63C48E; --soon:#F0C24B; --soon-fill:#F0C24B; --late:#FF8A80;
+    --btn:#E8F0F5; --btn-ink:#0C141B; --focus:#8EA8FF; --housing:#1B2833; --bar-track:#26343F;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C141B; --surface:#141F28; --surface-2:#1B2833; --ink:#E8F0F5; --ink-2:#9DB0BD; --line:#2A3946;
+  --company:#8EA8FF; --self:#FFA24D; --pa1:#63C48E; --pa2:#C79BFF; --pa3:#4DD0C4; --pa4:#FF8FB8; --pa5:#C8D94A; --pa6:#C9A79B; --ok:#63C48E; --soon:#F0C24B; --soon-fill:#F0C24B; --late:#FF8A80;
+  --btn:#E8F0F5; --btn-ink:#0C141B; --focus:#8EA8FF; --housing:#1B2833; --bar-track:#26343F;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--font-body)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wrap{max-width:600px;margin:0 auto;padding:16px 16px 120px}
+h1,h2,h3,p{margin:0}
+
+/* Header & Car Switcher Pill */
+.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px}
+.page-title{font:600 24px/1.15 var(--font-display)}
+.car-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:24px;border:1.5px solid var(--line);background:var(--surface);font-size:14px;font-weight:600;color:var(--ink);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car-pill:hover{border-color:var(--ink)}
+.car-pill svg{width:16px;height:16px;flex-shrink:0}
+
+h2{font:600 18px/1.2 var(--font-display)}
+.sec{margin-top:24px}
+.sec>h2{margin-bottom:10px}
+.muted{color:var(--ink-2)}
+.small{font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+
+/* Odometer */
+.odo{background:var(--housing);border-radius:20px;padding:18px 16px;color:#C3D0D9}
+.odo-label{font-size:14px;margin-bottom:10px;display:flex;justify-content:space-between}
+.odo-digits{display:flex;align-items:flex-end;gap:3px;flex-wrap:wrap}
+.drum{position:relative;flex:0 1 36px;min-width:0;height:58px;overflow:hidden;background:#04090D;border-radius:6px;box-shadow:inset 0 0 0 1px #2B3A46}
+.drum.gap{margin-left:8px}
+.drum::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.65),rgba(0,0,0,0) 32%,rgba(0,0,0,0) 68%,rgba(0,0,0,.65))}
+.strip{display:block;transform:translateY(calc(var(--d) * -58px))}
+.strip i{display:block;height:58px;font:600 36px/58px var(--font-display);text-align:center;color:#F2F6F8;font-style:normal}
+.strip.roll{animation:roll 1.2s cubic-bezier(.16,.8,.24,1) both;animation-delay:calc(var(--i) * 80ms)}
+@keyframes roll{from{transform:translateY(0)}to{transform:translateY(calc(var(--d) * -58px))}}
+.odo-unit{margin-left:8px;font:500 18px var(--font-display);padding-bottom:9px}
+.odo-meta{margin-top:12px;font-size:14px}
+.odo .btn{margin-top:14px;width:100%}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:12px;border:1.5px solid transparent;background:var(--btn);color:var(--btn-ink);font-weight:600}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+.btn.danger{background:transparent;border-color:var(--late);color:var(--late)}
+.btn.on-dark{background:#F2F6F8;color:#0F2230}
+.btn.small{min-height:36px;padding:0 12px;font-size:13.5px}
+.btn:disabled{opacity:.55;cursor:default}
+.btn svg,.fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.btn .google-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:none;background:#fff;border-radius:50%;padding:3px;box-sizing:content-box}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.actions .btn{flex:1 1 140px}
+
+/* Panels & Cards */
+.panel{background:var(--surface);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.panel.pad{padding:16px}
+.svc{padding:14px 16px}
+.svc+.svc{border-top:1px solid var(--line)}
+.svc-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px}
+.svc-name{font-weight:600}
+.svc-left{font:600 15px var(--font-display)}
+.svc-left.soon{color:var(--soon)} .svc-left.late{color:var(--late)} .svc-left.ok{color:var(--ok)}
+.svc-meta{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-size:13px;color:var(--ink-2)}
+.bar{height:8px;border-radius:4px;background:var(--bar-track);overflow:hidden}
+.bar>span{display:block;height:100%;border-radius:4px;background:var(--ink)}
+.bar.soon>span{background:var(--soon-fill)} .bar.late>span{background:var(--late)} .bar.ok>span{background:var(--ok)}
+.svc-actions{display:flex;gap:8px;margin-top:12px}
+details.hist{margin-top:10px}
+details.hist summary{cursor:pointer;font-size:13.5px;color:var(--ink-2);min-height:30px;display:flex;align-items:center}
+.hrow{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
+
+.pending{background:var(--surface);border-radius:16px;padding:16px;border-left:5px solid var(--company)}
+.pending .big{font:600 36px/1.1 var(--font-display);margin:6px 0 4px}
+.pending .cur{font-size:16px;font-weight:500;color:var(--ink-2)}
+.pending .btn{margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{padding:12px 10px;text-align:center}
+.stat b{display:block;font:600 19px/1.2 var(--font-display)}
+.stat span{font-size:12px;color:var(--ink-2)}
+.avgline{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.avgline b{display:block;font:600 32px/1.1 var(--font-display)}
+.avgline .sub b{font-size:24px}
+.split{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--bar-track);margin:6px 0 10px}
+.split .co{background:var(--company)} .split .se{background:var(--self)}
+.payer-add{display:flex;gap:8px;margin-top:8px}
+.payer-add[hidden]{display:none}
+.field .payer-add input[type=text]{flex:1;width:auto;min-width:0}
+.prow{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.prow:first-of-type{border-top:0}
+.prow i{width:10px;height:10px;border-radius:3px;flex:none}
+.prow .pn{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.legend{display:grid;grid-template-columns:auto 1fr auto;column-gap:10px;row-gap:6px;align-items:center;font-size:14px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.legend .v{text-align:right;font-weight:600}
+
+/* List & Segmented Controls */
+.seg{display:flex;flex-wrap:wrap;gap:3px;padding:3px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.seg button{flex:1;min-width:72px;min-height:38px;border:0;border-radius:9px;background:transparent;font-weight:500;color:var(--ink-2);font-size:14px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.mh{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 10px;margin:20px 4px 6px;font-size:13.5px;color:var(--ink-2)}
+.mh-pay{flex-basis:100%;display:flex;flex-wrap:wrap;gap:3px 14px;font-size:12.5px}
+.mh-pay span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.mh-pay i{width:8px;height:8px;border-radius:50%;flex:none}
+.mh b{font:600 15px var(--font-display);color:var(--ink)}
+.list{background:var(--surface);border-radius:16px;overflow:hidden}
+.row{display:block;width:100%;text-align:left;background:transparent;border:0;padding:12px 16px;min-height:54px}
+.row+.row{border-top:1px solid var(--line)}
+.row .r1,.row .r2{display:flex;align-items:center;gap:8px}
+.row .r1 b{font-weight:600}
+.row .amt{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+.row .r2{justify-content:space-between;font-size:13px;color:var(--ink-2);margin-top:2px;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+.chip.co{color:var(--company);background:color-mix(in srgb,var(--company) 14%,var(--surface))}
+.chip.se{color:var(--self);background:color-mix(in srgb,var(--self) 14%,var(--surface))}
+.chartbox{padding:12px 12px 8px}
+.chartbox svg{display:block;width:100%;height:auto}
+.chartbox text{font:11px var(--font-body);fill:var(--ink-2)}
+.empty{padding:24px 16px;text-align:center;color:var(--ink-2);font-size:14px}
+.empty .btn{margin-top:12px}
+
+/* Tables */
+.tbl{overflow-x:auto}
+.mrow{display:grid;grid-template-columns:minmax(75px,1.1fr) 1fr 1fr 1fr;gap:6px;padding:11px 16px;font-size:13.5px;font-variant-numeric:tabular-nums;text-align:right;min-width:320px}
+.mrow>:first-child{text-align:left}
+.mrow+.mrow{border-top:1px solid var(--line)}
+.mrow.head{font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.mrow.head .c{color:var(--company)} .mrow.head .s{color:var(--self)}
+.mrow.m5{grid-template-columns:minmax(75px,1.1fr) 1fr 1fr 1fr 1fr;min-width:410px}
+.mrow.foot{font-weight:700;border-top:2px solid var(--line)}
+
+/* Bottom Nav & FAB */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+.tabs>div{max-width:600px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.tabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;border:0;background:transparent;color:var(--ink-2);font-size:11.5px;font-weight:500}
+.tabs button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button[aria-current="page"]{color:var(--ink);font-weight:700}
+.tabs button[aria-current="page"] svg{stroke-width:2.4}
+.fab{position:fixed;right:16px;bottom:calc(74px + env(safe-area-inset-bottom,0px));z-index:4;display:inline-flex;align-items:center;gap:8px;min-height:50px;padding:0 18px;border-radius:25px;border:0;background:var(--btn);color:var(--btn-ink);font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+
+/* Modal Sheet */
+dialog#sheet{border:0;padding:0;margin:auto auto 0;width:min(600px,100%);max-width:100%;max-height:92vh;max-height:92dvh;border-radius:20px 20px 0 0;background:var(--surface);color:var(--ink);overflow:hidden}
+dialog#sheet::backdrop{background:rgba(6,14,20,.6)}
+.sheet-body{padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));overflow-y:auto;max-height:92vh;max-height:92dvh}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.icon-btn{width:40px;height:40px;border-radius:10px;border:0;background:var(--surface-2);font-size:22px;line-height:1}
+.field{display:block;margin:0 0 14px;padding:0;border:0;min-width:0}
+.field>label,.field>legend{display:block;font-size:13.5px;font-weight:600;margin-bottom:6px;padding:0}
+.field input[type=text],.field input[type=date],.field select{width:100%;min-height:46px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface-2);font-size:15px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;align-items:center;gap:10px;min-height:42px;margin-bottom:8px;font-size:14px}
+.check input{width:20px;height:20px}
+.seg2{display:flex;flex-wrap:wrap;gap:8px}
+.seg2 label{flex:1 1 calc(50% - 4px);min-width:0;position:relative}
+.seg2 input{position:absolute;opacity:0;inset:0;margin:0}
+.seg2 span{display:flex;align-items:center;justify-content:center;padding:0 6px;text-align:center;overflow-wrap:anywhere;min-height:46px;border-radius:10px;border:1.5px solid var(--line);font-weight:600;font-size:14px}
+.seg2 input:checked+span{border-color:var(--ink);background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--ink)}
+.preview{min-height:20px;font-size:13.5px;color:var(--ink-2);margin:4px 0}
+.preview.err{color:var(--late);font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(82px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;max-width:calc(100% - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.loading{padding:40px 0;text-align:center;color:var(--ink-2)}
+.foot-note{margin-top:24px;font-size:13px;color:var(--ink-2);text-align:center}
+.tabs>.app-footer{display:flex!important;grid-template-columns:none!important;align-items:center;justify-content:space-between;gap:12px;padding:2px 12px calc(6px + env(safe-area-inset-bottom,0px));text-align:left;font-size:10.5px;line-height:1.2;color:var(--ink-2);font-weight:500;white-space:nowrap;max-width:600px;margin:0 auto}
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.hub-label{font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px}
+.switch-card{padding:14px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.switch-card-header{display:flex;justify-content:space-between;align-items:center}
+.switch-badge{font-size:13.5px;font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
+.btn-link{background:none;border:none;color:var(--company);font-size:12.5px;font-weight:600;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+
+/* Multi-car cards */
+.car-card{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2);margin-bottom:8px}
+.car-card.active{border-color:var(--company);background:color-mix(in srgb,var(--company) 8%,var(--surface))}
+.car-card-body{flex:1;cursor:pointer}
+.car-card-body b{display:block;font-size:15px;margin-bottom:2px}
+.car-card-body span{font-size:12.5px;color:var(--ink-2)}
+.car-card-body .badge-active,.badge-active{color:#fff !important;-webkit-text-fill-color:#fff;font-size:11px;display:inline-block;padding:2px 8px;border-radius:6px;background:#2C52C4;color:#fff;font-size:11px;font-weight:700;letter-spacing:.3px}
+.info-box{background:var(--surface-2);border-left:4px solid var(--company);padding:10px 12px;border-radius:8px;font-size:13px;color:var(--ink-2);margin-bottom:12px}
+
+/* Print/PDF Report Styles */
+#print-report{display:none}
+@media print{
+  body{background:#fff!important;color:#000!important;font-size:12px!important}
+  body > *:not(#print-report){display:none!important}
+  dialog{display:none!important}
+  #print-report{display:block!important;padding:24px}
+  .p-head{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end}
+  .p-head h1{font-size:22px;margin:0;font-family:sans-serif}
+  .p-sec{margin-bottom:18px}
+  .p-sec h2{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:4px;margin-bottom:8px;font-family:sans-serif}
+  .p-tbl{width:100%;border-collapse:collapse;margin-top:6px}
+  .p-tbl th,.p-tbl td{border:1px solid #ddd;padding:6px 8px;text-align:left;font-size:11.5px}
+  .p-tbl th{background:#f5f5f5;font-weight:700}
+  .p-tbl td.num,.p-tbl th.num{text-align:right}
+  .p-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+  .p-card{border:1px solid #ddd;padding:8px;border-radius:6px}
+  .p-card b{display:block;font-size:14px}
+  .p-card span{font-size:11px;color:#555}
+}
+</style>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+</head>
+<body>
+<div class="wrap">
+  <header class="top-bar">
+    <h1 class="page-title" id="page-hdr" data-act="tab" data-tab="home" style="cursor:pointer" role="button" aria-label="Go to Home">CarLog</h1>
+    <button class="car-pill" data-act="open-car-modal" aria-label="Go to Car Selection in Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11.2 2 11.6 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+      <span id="active-car-name">Select Car</span>
+      <span id="active-car-plate" class="small muted" style="opacity:.85"></span>
+    </button>
+  </header>
+  <main id="view" aria-live="polite"></main>
+</div>
+
+<button class="fab" id="fab" data-act="add-fill" hidden><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add fill-up</button>
+<nav class="tabs" aria-label="Sections"><div>
+  <button data-act="tab" data-tab="home"><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.2"/></svg>Home</button>
+  <button data-act="tab" data-tab="fuel"><svg viewBox="0 0 24 24"><path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15"/><path d="M4 20h11"/><path d="M14 9h2.5a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M7.5 8h4"/></svg>Fuel</button>
+  <button data-act="tab" data-tab="money"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M14.6 9.3c-.6-.8-1.5-1.3-2.7-1.3-1.5 0-2.6.8-2.6 2 0 2.9 5.4 1.3 5.4 4.2 0 1.2-1.1 2-2.7 2-1.2 0-2.2-.5-2.8-1.4"/><path d="M12 6.4V8m0 8v1.6"/></svg>Money</button>
+  <button data-act="tab" data-tab="service"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L4 16.7 7.3 20l5.3-5.3a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>Service</button>
+  <button data-act="tab" data-tab="data"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
+</div><div class="app-footer"><span>Created By: Kadir-ekhasti</span><span>Version: v2026.10.10</span></div></nav>
+
+<dialog id="sheet" aria-label="Modal"></dialog>
+<div id="print-report"></div>
+<input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display:none">
+<input type="file" id="json-restore-input" accept=".json" style="display:none">
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- APP STATE ---------- */
+const S = {
+  // First install starts completely empty. A car is created only when the user adds/imports/restores one.
+  cars: [],
+  activeCarId: null,
+  cfg: { currency: "AED", theme: "system", payers: [], companyName: "Company", activeCompany: "C" },
+  meta: { lastBackup: null }
+};
+
+let ready = false, tab = 'home', filter = 'all', animateOdo = true, showAllPay = false, C = null;
+
+/* ---------- HELPERS ---------- */
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const nf0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const nf2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt0 = n => nf0.format(n || 0);
+const fmt2 = n => nf2.format(n || 0);
+const fmtDate = (s, short) => { if (!s) return ''; const p = s.split('-').map(Number); return p[2] + ' ' + MON[p[1] - 1] + (short ? '' : ' ' + p[0]); };
+const monthLabel = (k, long) => { const p = k.split('-').map(Number); return (long ? MONL[p[1] - 1] : MON[p[1] - 1]) + ' ' + p[0]; };
+const dayNum = s => { const p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / 864e5; };
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const today = () => ymd(new Date());
+const r2 = n => Math.round(n * 100) / 100;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+/* ---------- PAYERS (Company, Self + user-defined) ---------- */
+const coName = () => (S.cfg && S.cfg.companyName && String(S.cfg.companyName).trim()) || 'Company';
+const customPayers = () => (S.cfg && Array.isArray(S.cfg.payers)) ? S.cfg.payers : [];
+const allPayers = () => [{ id: 'C', n: coName() }, { id: 'S', n: 'Self' }].concat(customPayers());
+/* Companies = reimbursement payers. 'C' (renamable) + any custom payer flagged co:true. Exactly one is "active". */
+const companies = () => [{ id: 'C', n: coName() }].concat(customPayers().filter(p => p.co));
+function activeCoId() {
+  const id = S.cfg && S.cfg.activeCompany;
+  return companies().some(c => c.id === id) ? id : 'C';
+}
+const coOfPay = p => (p && p.c) || 'C';
+function coBalance(car, id) {
+  const fuel = (car.fills || []).filter(f => f.b === id).reduce((s, f) => s + f.a, 0);
+  const rec = (car.payments || []).filter(p => coOfPay(p) === id).reduce((s, p) => s + p.a, 0);
+  return fuel - rec;
+}
+function payerName(id) {
+  if (id === 'C') return coName();
+  if (id === 'S') return 'Self';
+  const p = customPayers().find(x => x.id === id);
+  return p ? p.n : 'Other';
+}
+function payerColor(id) {
+  if (id === 'C') return 'var(--company)';
+  if (id === 'S') return 'var(--self)';
+  const i = customPayers().findIndex(x => x.id === id);
+  return 'var(--pa' + (((i < 0 ? 0 : i) % 6) + 1) + ')';
+}
+// Payers to show for a { id: amount } map: Self + active company always, others only if they have spend.
+function payersFor(map) {
+  const act = activeCoId();
+  const list = allPayers().filter(p => p.id === 'S' || p.id === act || (map[p.id] || 0) > 0);
+  Object.keys(map).forEach(id => { if (!list.some(p => p.id === id) && map[id] > 0) list.push({ id, n: payerName(id) }); });
+  return list;
+}
+function payerUsage(id) {
+  let n = 0;
+  S.cars.forEach(c => {
+    (c.fills || []).forEach(f => { if (f.b === id) n++; });
+    (c.payments || []).forEach(p => { if (coOfPay(p) === id) n++; });
+  });
+  return n;
+}
+function payerManageHTML() {
+  const un = customPayers().filter(p => payerUsage(p.id) === 0);
+  const used = customPayers().length - un.length;
+  if (!customPayers().length) return '<p class="small muted">No custom payers to remove.</p>';
+  return (un.length ? un.map(p => `<div class="prow"><i style="background:${payerColor(p.id)}"></i><span class="pn">${esc(p.n)}</span><button type="button" class="btn small danger" data-act="payer-remove-one" data-id="${esc(p.id)}">Remove</button></div>`).join('') : '<p class="small muted">All custom payers are in use, nothing to remove.</p>')
+    + (used && un.length ? `<p class="small muted" style="margin-top:6px">${used} payer(s) already used in fills cannot be removed.</p>` : '');
+}
+function addPayer(raw, persist) {
+  const name = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!name) return { err: 'Please enter a name.' };
+  if (name.length > 20) return { err: 'Name can be at most 20 characters.' };
+  const ex = allPayers().find(p => p.n.toLowerCase() === name.toLowerCase());
+  if (ex) return { id: ex.id };
+  const p = { id: 'p' + uid(), n: name };
+  S.cfg.payers = customPayers().concat([p]);
+  if (persist !== false) persistAll();
+  return { id: p.id };
+}
+function resolveCompany(raw) {
+  const t = String(raw == null ? '' : raw).trim(), u = t.toUpperCase();
+  if (!t || u === 'C' || u === 'COMPANY' || u === coName().toUpperCase()) return 'C';
+  const ex = allPayers().find(p => p.n.toLowerCase() === t.toLowerCase());
+  if (ex && ex.id !== 'S') {
+    if (ex.id !== 'C') { const cp = customPayers().find(x => x.id === ex.id); if (cp) cp.co = true; }
+    return ex.id;
+  }
+  const p = { id: 'p' + uid(), n: t.slice(0, 20), co: true };
+  S.cfg.payers = customPayers().concat([p]);
+  return p.id;
+}
+function resolvePayer(raw) {
+  const t = String(raw == null ? '' : raw).trim(), u = t.toUpperCase();
+  if (!t || u === 'C' || u === 'COMPANY' || u === coName().toUpperCase()) return 'C';
+  if (u === 'S' || u === 'SELF') return 'S';
+  const r = addPayer(t.slice(0, 20), false);
+  return r.id || 'C';
+}
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+
+function parseNum(v) {
+  if (v == null || v === '' || v === '-') return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  const s = String(v).replace(/AED|INR|USD|EUR|km|\/L|%|,|\s/gi, '').trim();
+  if (s === '' || s === '-') return null;
+  const n = parseFloat(s);
+  return isFinite(n) ? n : null;
+}
+
+function parseExcelDate(val) {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? '' : ymd(d);
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return ymd(parsed);
+  return s;
+}
+
+function colName(c) {
+  let s = ""; c++;
+  while (c > 0) {
+    let m = (c - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    c = Math.floor((c - m) / 26);
+  }
+  return s;
+}
+
+/* ---------- ACTIVE CAR & STORAGE ---------- */
+function getActiveCar() {
+  if (!Array.isArray(S.cars) || !S.cars.length) return null;
+  let car = S.cars.find(c => c.id === S.activeCarId);
+  if (!car) {
+    car = S.cars[0];
+    S.activeCarId = car.id;
+  }
+  return car;
+}
+
+const Store = {
+  get(name) {
+    try {
+      const v = localStorage.getItem('carlog.v2.' + name);
+      return v ? JSON.parse(v) : null;
+    } catch (e) { return null; }
+  },
+  save(name, payload) {
+    try { localStorage.setItem('carlog.v2.' + name, JSON.stringify(payload)); }
+    catch (e) { toast('Could not save to local storage.'); }
+    return Promise.resolve();
+  }
+};
+
+function persistAll() {
+  Store.save('cars', S.cars);
+  Store.save('activeCarId', S.activeCarId);
+  Store.save('cfg', S.cfg);
+  Store.save('meta', S.meta);
+  syncSoon();
+}
+
+function clearLegacySampleIfPresent() {
+  // Remove the exact sample dataset shipped by older builds, but never touch real user data.
+  try {
+    const cars = Store.get('cars');
+    const sample = Array.isArray(cars) && cars.length === 1 && cars[0] &&
+      cars[0].id === 'car_1' &&
+      cars[0].name === 'Toyota Yaris' &&
+      cars[0].plate === 'DXB-284185' &&
+      cars[0].odometer === 284185 &&
+      Array.isArray(cars[0].fills) && cars[0].fills.length === 7 &&
+      Array.isArray(cars[0].payments) && cars[0].payments.length === 2 &&
+      Array.isArray(cars[0].service) && cars[0].service.length === 2;
+    if (sample) {
+      localStorage.removeItem('carlog.v2.cars');
+      localStorage.removeItem('carlog.v2.activeCarId');
+      localStorage.removeItem('carlog.v2.cfg');
+      localStorage.removeItem('carlog.v2.meta');
+    }
+  } catch (e) {}
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const t = theme === 'dark' || theme === 'light' ? theme : 'system';
+  if (t === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', t);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', t === 'dark' ? '#0C141B' : '#0F2230');
+}
+
+function setTheme(theme) {
+  const t = ['dark','light','system'].includes(theme) ? theme : 'system';
+  S.cfg.theme = t;
+  applyTheme(t);
+  persistAll();
+  render();
+}
+
+function initApp() {
+  clearLegacySampleIfPresent();
+
+  const cars = Store.get('cars');
+  const activeCarId = Store.get('activeCarId');
+  const cfg = Store.get('cfg');
+  const meta = Store.get('meta');
+
+  if (cars && Array.isArray(cars) && cars.length > 0) {
+    S.cars = cars;
+    S.activeCarId = activeCarId || cars[0].id;
+  } else {
+    // Fresh installation: initialize an empty data model.
+    // No sample/demo car, fuel, payment, or service records are created.
+    try {
+      const v1Fills = localStorage.getItem('carlog.v1.fills');
+      const v1Pays = localStorage.getItem('carlog.v1.payments');
+      const v1Svc = localStorage.getItem('carlog.v1.service');
+      if (v1Fills || v1Pays || v1Svc) {
+        const migrated = {
+          id: 'car_' + uid(),
+          name: 'My Car',
+          plate: '',
+          odometer: 0,
+          fills: v1Fills ? JSON.parse(v1Fills).rows || [] : [],
+          payments: v1Pays ? JSON.parse(v1Pays).rows || [] : [],
+          service: v1Svc ? JSON.parse(v1Svc).items || [] : []
+        };
+        S.cars = [migrated];
+        S.activeCarId = migrated.id;
+      } else {
+        S.cars = [];
+        S.activeCarId = null;
+      }
+    } catch (e) {
+      S.cars = [];
+      S.activeCarId = null;
+    }
+  }
+
+  if (cfg) S.cfg = Object.assign({ currency: "AED", theme: "system", payers: [], companyName: "Company", activeCompany: "C" }, cfg);
+  if (!Array.isArray(S.cfg.payers)) S.cfg.payers = [];
+  if (!S.cfg.companyName || !String(S.cfg.companyName).trim()) S.cfg.companyName = "Company";
+  if (meta) S.meta = meta;
+  applyTheme(S.cfg.theme);
+
+  ready = true;
+  persistAll();
+  render();
+}
+
+/* ---------- COMPUTATIONS ---------- */
+function sortFills(rows) {
+  return rows.slice().sort((a, b) => {
+    if (a.d !== b.d) return a.d < b.d ? -1 : 1;
+    const ka = a.k == null ? -1 : a.k, kb = b.k == null ? -1 : b.k;
+    if (ka !== kb) return ka - kb;
+    return a.i < b.i ? -1 : (a.i > b.i ? 1 : 0);
+  });
+}
+
+function derive(rows) {
+  let prevK = null, prevD = null; const out = [];
+  sortFills(rows).forEach(f => {
+    const litres = f.r > 0 ? f.a / f.r : null;
+    const rental = f.k == null;
+    let run = null, avg = null, pk = prevK;
+    if (!rental) {
+      if (prevK != null) { run = f.k - prevK; if (litres > 0 && run > 0) avg = run / litres; }
+      prevK = f.k;
+    }
+    const days = prevD ? dayNum(f.d) - dayNum(prevD) : null;
+    prevD = f.d;
+    out.push(Object.assign({}, f, { litres, rental, run, avg, days, pk }));
+  });
+  return out;
+}
+
+function compute() {
+  const car = getActiveCar();
+  const D = derive(car.fills || []);
+  const real = D.filter(r => !r.rental);
+  const avgs = D.filter(r => r.avg != null).map(r => r.avg);
+  const months = {}; const byPayer = {}; let totalFuel = 0;
+  D.forEach(r => {
+    const k = r.d.slice(0, 7); months[k] = months[k] || { by: {}, t: 0, n: 0 };
+    const m = months[k];
+    m.by[r.b] = (m.by[r.b] || 0) + r.a; m.t += r.a; m.n++;
+    byPayer[r.b] = (byPayer[r.b] || 0) + r.a; totalFuel += r.a;
+  });
+  const coId = activeCoId();
+  const ledger = companies().map(co => {
+    const fuel = byPayer[co.id] || 0;
+    const rec = (car.payments || []).filter(p => coOfPay(p) === co.id).reduce((s, p) => s + p.a, 0);
+    return { id: co.id, n: co.n, fuel, rec, bal: fuel - rec };
+  }).filter(l => l.id === coId || l.fuel > 0 || l.rec > 0);
+  const act = ledger.find(l => l.id === coId) || { fuel: 0, rec: 0, bal: 0 };
+  const comp = act.fuel, self = byPayer.S || 0, others = totalFuel - comp - self;
+  const received = act.rec;
+  let odo = real.length ? Math.max.apply(null, real.map(r => r.k)) : (car.odometer || null);
+  (car.service || []).forEach(it => (it.h || []).forEach(e => { if (odo == null || e.k > odo) odo = e.k; }));
+  car.odometer = odo;
+  const totalRun = D.reduce((s, r) => s + (r.run > 0 ? r.run : 0), 0);
+
+  C = {
+    car, D, real, avgs,
+    avg: mean(avgs),
+    avg10: mean(avgs.slice(-10)),
+    avgLast: avgs.length ? avgs[avgs.length - 1] : null,
+    comp, self, others, byPayer, ledger, coId,
+    total: totalFuel,
+    received,
+    balance: act.bal,
+    months,
+    odo,
+    totalRun,
+    lastReal: real.length ? real[real.length - 1] : null
+  };
+}
+
+function svcCalc(it) {
+  if (!it || !it.h || !it.h.length) return null;
+  const h = it.h.slice().sort((a, b) => a.k - b.k);
+  const last = h[h.length - 1];
+  if (!last) return null;
+  const odo = (C && C.odo != null) ? C.odo : last.k;
+  const next = last.k + last.i, left = next - odo, done = odo - last.k;
+  return {
+    h, last, next, left, done,
+    frac: Math.min(1, Math.max(0, done / (last.i || 1))),
+    state: left < 0 ? 'late' : (left <= (last.i * 0.1) ? 'soon' : 'ok')
+  };
+}
+
+/* ---------- 1. EXCEL EXPORT (EXACT DASHBOARD & FORMULAS) ---------- */
+function exportToExcel() {
+  if (!window.XLSX) { toast('Loading Excel library...'); return; }
+  const wb = XLSX.utils.book_new();
+  const car = getActiveCar();
+  const curOdo = C.odo || car.odometer || 0;
+
+  /* --- Sheet 1: CAR MAINTENANCE DASHBOARD --- */
+  const dashRows = [];
+  dashRows.push([]);
+  dashRows.push([]);
+  dashRows.push(["", "🚘  CAR MAINTENANCE DASHBOARD"]);
+  dashRows.push([]);
+
+  const oil = (car.service || []).find(s => s.i === 'oil' || /oil/i.test(s.n)) || { n: 'Oil change', h: [] };
+  const tyre = (car.service || []).find(s => s.i === 'tyre' || /tyre|tire/i.test(s.n)) || { n: 'Tyre rotation', h: [] };
+  const lastOil = (oil.h && oil.h.length) ? oil.h[oil.h.length - 1] : { k: 0, i: 5000 };
+  const lastTyre = (tyre.h && tyre.h.length) ? tyre.h[tyre.h.length - 1] : { k: 0, i: 10000 };
+
+  // Oil Change block
+  dashRows.push(["", "🛢  OIL CHANGE"]);
+  dashRows.push(["", "Last Change on (km)", "", "", "Next Due on (km)", "", "", "📍 Current Odometer", "", "", "Done (km)", "", "", "🛢️ Oil Change Due In"]);
+  dashRows.push([
+    "",
+    lastOil.k, "", "",
+    { f: `B7+${lastOil.i}`, v: lastOil.k + lastOil.i }, "", "",
+    curOdo, "", "",
+    { f: `H7-B7`, v: Math.max(0, curOdo - lastOil.k) }, "", "",
+    { f: `E7-H7`, v: (lastOil.k + lastOil.i) - curOdo }
+  ]);
+  dashRows.push([]);
+
+  // Tyre Rotation block
+  dashRows.push(["", "🛞  TYRE ROTATION"]);
+  dashRows.push(["", "Last Change on (km)", "", "", "Next Due on (km)", "", "", "📍 Current Odometer", "", "", "Done (km)", "", "", "🛞 Tyre Rotation Due In"]);
+  dashRows.push([
+    "",
+    lastTyre.k, "", "",
+    { f: `B11+${lastTyre.i}`, v: lastTyre.k + lastTyre.i }, "", "",
+    { f: `H7`, v: curOdo }, "", "",
+    { f: `H11-B11`, v: Math.max(0, curOdo - lastTyre.k) }, "", "",
+    { f: `E11-H11`, v: (lastTyre.k + lastTyre.i) - curOdo }
+  ]);
+  dashRows.push([]);
+
+  // Fuel totals by payer
+  const pl = payersFor(C.byPayer);
+  const tv = pl.map(p => C.byPayer[p.id] || 0);
+  const totSpend = tv.reduce((a, b) => a + b, 0) || 1;
+  const pad13 = ["", "", "", "", "", "", "", "", "", "", "", "", ""];
+  const colL = k => colName(13 + k);
+  const den = pl.map((p, k) => colL(k) + '14').join('+');
+  dashRows.push(pad13.concat(pl.map(p => p.n)));
+  dashRows.push(pad13.concat(tv));
+  dashRows.push(pad13.concat(pl.map((p, k) => ({ f: `IF((${den})>0, ${colL(k)}14/(${den}), 0)`, v: Math.round(tv[k] / totSpend * 1000) / 1000 }))));
+  dashRows.push([]);
+
+  // Yearly Expense Tables
+  const years = [2025, 2026, 2027, 2028];
+  Object.keys(C.months).forEach(m => {
+    const y = parseInt(m.split('-')[0]);
+    if (y && !years.includes(y)) years.push(y);
+  });
+  years.sort();
+
+  years.forEach(yr => {
+    dashRows.push([]);
+    const mCols = [];
+    const vals = pl.map(() => []);
+    const startMonth = (yr === 2025) ? 8 : 1;
+
+    for (let m = startMonth; m <= 12; m++) {
+      const mKey = `${yr}-${String(m).padStart(2, '0')}`;
+      mCols.push(`${MON[m - 1]}-${yr}`);
+      const mData = C.months[mKey];
+      pl.forEach((p, k) => vals[k].push(mData ? (mData.by[p.id] || 0) : "-"));
+    }
+
+    const curR = dashRows.length + 1;
+    const numMonths = mCols.length;
+    const startColLetter = colName(1);
+    const endColLetter = colName(numMonths);
+
+    dashRows.push(["Month", ...mCols, "G. Total"]);
+    pl.forEach((p, k) => {
+      const rr = curR + 1 + k;
+      dashRows.push([p.n, ...vals[k], { f: `SUM(${startColLetter}${rr}:${endColLetter}${rr})` }]);
+    });
+    const totIdx = curR + 1 + pl.length;
+    const totRow = ["Total"];
+    for (let q = 0; q < numMonths; q++) {
+      const cL = colName(q + 1);
+      totRow.push({ f: pl.map((p, k) => `${cL}${curR + 1 + k}`).join('+') });
+    }
+    totRow.push({ f: `SUM(${startColLetter}${totIdx}:${endColLetter}${totIdx})` });
+    dashRows.push(totRow);
+  });
+
+  const dashWS = XLSX.utils.aoa_to_sheet(dashRows);
+  XLSX.utils.book_append_sheet(wb, dashWS, "CAR MAINTENANCE DASHBOARD");
+
+  /* --- Sheet 2: Fuel Log --- */
+  const fillsHeader = [["ID", "Date", "Odometer (km)", "Amount (AED)", "Rate/Litre", "Paid By (C/S)", "Litres", "Km Driven", "km/L Average"]];
+  const fillsData = (car.fills || []).map((f, i) => {
+    const rowNum = i + 2;
+    return [
+      f.i,
+      f.d,
+      f.k != null ? f.k : '',
+      f.a,
+      f.r,
+      (f.b === 'C' || f.b === 'S') ? f.b : payerName(f.b),
+      { f: `IF(E${rowNum}>0, D${rowNum}/E${rowNum}, 0)` },
+      { f: `IF(AND(ISNUMBER(C${rowNum}), ISNUMBER(C${rowNum - 1})), C${rowNum}-C${rowNum - 1}, "")` },
+      { f: `IF(AND(ISNUMBER(H${rowNum}), G${rowNum}>0), H${rowNum}/G${rowNum}, "")` }
+    ];
+  });
+  const fillsWS = XLSX.utils.aoa_to_sheet([...fillsHeader, ...fillsData]);
+  XLSX.utils.book_append_sheet(wb, fillsWS, "Fuel Log");
+
+  /* --- Sheet 3: Payments --- */
+  const payHeader = [["ID", "Date Received", "Amount (AED)", "Notes", "Company"]];
+  const payData = (car.payments || []).map(p => [p.i, p.d, p.a, p.n || '', payerName(coOfPay(p))]);
+  const payWS = XLSX.utils.aoa_to_sheet([...payHeader, ...payData]);
+  XLSX.utils.book_append_sheet(wb, payWS, "Payments");
+
+  /* --- Sheet 4: Service Log --- */
+  const svcHeader = [["Service ID", "Service Name", "Odometer (km)", "Interval (km)"]];
+  const svcRows = [];
+  (car.service || []).forEach(s => {
+    (s.h || []).forEach(h => {
+      svcRows.push([s.i, s.n, h.k, h.i]);
+    });
+  });
+  const svcWS = XLSX.utils.aoa_to_sheet([...svcHeader, ...svcRows]);
+  XLSX.utils.book_append_sheet(wb, svcWS, "Service Log");
+
+  const fileName = `${car.name.replace(/\s+/g, '_')}_Average_Car_${ymd(new Date())}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  toast(`Excel exported successfully! (${fileName})`);
+}
+
+/* ---------- 2. EXCEL IMPORT ---------- */
+function parseDashboardSheet(rows, car) {
+  let importedSvc = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const fullRowStr = row.map(c => String(c || '').trim()).join(' ').toUpperCase();
+
+    if ((fullRowStr.includes("OIL CHANGE") || fullRowStr.includes("TYRE ROTATION") || fullRowStr.includes("SERVICE")) && !fullRowStr.includes("DUE IN")) {
+      let svcName = "Oil change";
+      let svcId = "oil";
+      if (fullRowStr.includes("TYRE") || fullRowStr.includes("TIRE")) { svcName = "Tyre rotation"; svcId = "tyre"; }
+      else if (!fullRowStr.includes("OIL")) {
+        svcName = row.find(c => c && String(c).trim().length > 2) || "Service";
+        svcId = 's_' + Date.now().toString(36);
+      }
+
+      let headerRow = null, valRow = null;
+      for (let look = r + 1; look < Math.min(rows.length, r + 5); look++) {
+        const candidate = rows[look] || [];
+        if (candidate.some(c => /last change|next due|current odometer/i.test(String(c)))) {
+          headerRow = candidate;
+          valRow = rows[look + 1];
+          break;
+        }
+      }
+
+      if (headerRow && valRow) {
+        const lastCol = headerRow.findIndex(h => /last change/i.test(String(h)));
+        const nextCol = headerRow.findIndex(h => /next due/i.test(String(h)));
+        const curCol  = headerRow.findIndex(h => /current odometer/i.test(String(h)));
+
+        const lastKm = lastCol >= 0 ? parseNum(valRow[lastCol]) : null;
+        const nextKm = nextCol >= 0 ? parseNum(valRow[nextCol]) : null;
+        const curKm  = curCol >= 0 ? parseNum(valRow[curCol]) : null;
+
+        if (curKm && (!car.odometer || curKm > car.odometer)) car.odometer = curKm;
+        const interval = (nextKm && lastKm && nextKm > lastKm) ? (nextKm - lastKm) : (svcId === 'tyre' ? 10000 : 5000);
+
+        if (lastKm) {
+          let s = car.service.find(x => x.i === svcId || x.n.toLowerCase() === svcName.toLowerCase());
+          if (!s) { s = { i: svcId, n: svcName, h: [] }; car.service.push(s); }
+          s.h = [{ k: lastKm, i: interval }];
+          importedSvc++;
+        }
+      }
+    }
+  }
+  return importedSvc;
+}
+
+function importFromExcel(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+
+  reader.onload = function(evt) {
+    try {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const car = getActiveCar();
+      let importedFills = 0, importedPays = 0, importedSvc = 0;
+
+      // 1. Check for CAR MAINTENANCE DASHBOARD
+      const dashSheetName = workbook.SheetNames.find(n => /dashboard|maintenance/i.test(n));
+      if (dashSheetName) {
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[dashSheetName], { header: 1, defval: '' });
+        importedSvc += parseDashboardSheet(rows, car);
+      }
+
+      // 2. Check for Fuel Log Sheet
+      const fuelSheetName = workbook.SheetNames.find(n => /fuel|fills|petrol|log/i.test(n) && !/service/i.test(n));
+      if (fuelSheetName) {
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[fuelSheetName]);
+        if (rows && rows.length) {
+          const parsedFills = rows.map((r, idx) => {
+            const dateVal = r["Date"] || r["date"] || r["DATE"] || today();
+            const odoVal = r["Odometer (km)"] || r["Odometer"] || r["km"] || r["KM"];
+            const amtVal = r["Amount (AED)"] || r["Amount"] || r["cost"] || r["Total"];
+            const rateVal = r["Rate/Litre"] || r["Rate"] || r["price"] || 2.57;
+            const byVal = String(r["Paid By (C/S)"] || r["Paid By"] || r["By"] || 'C').trim();
+            return {
+              i: r["ID"] || `f_imp_${uid()}_${idx}`,
+              d: parseExcelDate(dateVal),
+              k: parseNum(odoVal),
+              a: parseNum(amtVal) || 0,
+              r: parseNum(rateVal) || 2.57,
+              b: resolvePayer(byVal)
+            };
+          }).filter(f => f.a > 0);
+
+          if (parsedFills.length) {
+            car.fills = sortFills(parsedFills);
+            importedFills = parsedFills.length;
+          }
+        }
+      }
+
+      // 3. Check for Payments Sheet
+      const paySheetName = workbook.SheetNames.find(n => /payment/i.test(n));
+      if (paySheetName) {
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[paySheetName]);
+        if (rows && rows.length) {
+          car.payments = rows.map((r, idx) => ({
+            i: r["ID"] || `p_imp_${uid()}_${idx}`,
+            d: parseExcelDate(r["Date Received"] || r["Date"] || today()),
+            a: parseNum(r["Amount (AED)"] || r["Amount"]) || 0,
+            n: String(r["Notes"] || r["Note"] || ''),
+            c: resolveCompany(r["Company"] || r["Paid By"] || '')
+          })).filter(p => p.a > 0);
+          importedPays = car.payments.length;
+        }
+      }
+
+      // 4. Check for Service Log Sheet
+      const svcSheetName = workbook.SheetNames.find(n => /service log|services/i.test(n));
+      if (svcSheetName) {
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[svcSheetName]);
+        if (rows && rows.length) {
+          const map = {};
+          rows.forEach(r => {
+            const sid = r["Service ID"] || 's_' + uid();
+            const sname = r["Service Name"] || 'Service';
+            if (!map[sid]) map[sid] = { i: sid, n: sname, h: [] };
+            const kmVal = parseNum(r["Odometer (km)"] || r["Odometer"]);
+            const intVal = parseNum(r["Interval (km)"] || r["Interval"]) || 5000;
+            if (kmVal) map[sid].h.push({ k: kmVal, i: intVal });
+          });
+          if (Object.keys(map).length) {
+            car.service = Object.values(map);
+            importedSvc += Object.keys(map).length;
+          }
+        }
+      }
+
+      persistAll();
+      render();
+      toast(`Import successful: ${importedFills} fuel fills, ${importedPays} payments, and ${importedSvc} service reminders updated!`);
+    } catch (err) {
+      toast('Failed to parse Excel file. Please check file format.');
+    }
+    e.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- 3. DIRECT LOCAL JSON BACKUP & RESTORE ---------- */
+function downloadJsonBackup() {
+  S.meta.lastBackup = ymd(new Date()) + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  persistAll();
+  const jsonStr = JSON.stringify({ cars: S.cars, activeCarId: S.activeCarId, meta: S.meta, cfg: S.cfg }, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `CarLog_All_Cars_Backup_${ymd(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  render();
+  toast('Local JSON backup downloaded successfully!');
+}
+
+function restoreFromJson(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const data = JSON.parse(evt.target.result);
+      if (data && (data.cars || data.fills)) {
+        if (confirm('Do you want to restore and replace all car data from this backup file?')) {
+          if (data.cars) {
+            S.cars = data.cars;
+            if (data.activeCarId) S.activeCarId = data.activeCarId;
+          } else if (Array.isArray(data.fills)) {
+            const car = getActiveCar();
+            car.fills = sortFills(data.fills);
+            if (data.payments) car.payments = data.payments;
+            if (data.services) car.service = data.services;
+          }
+          if (data.meta) S.meta = data.meta;
+          if (data.cfg && Array.isArray(data.cfg.payers)) S.cfg.payers = data.cfg.payers;
+          if (data.cfg && data.cfg.companyName) S.cfg.companyName = data.cfg.companyName;
+          if (data.cfg && data.cfg.activeCompany) S.cfg.activeCompany = data.cfg.activeCompany;
+          persistAll();
+          closeSheet();
+          render();
+          toast('All data restored successfully from JSON backup!');
+        }
+      } else {
+        toast('Invalid backup file format.');
+      }
+    } catch (err) {
+      toast('Failed to parse JSON backup file.');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- 3b. GOOGLE DRIVE SYNC (login + backup + multi-device) ----------
+   Data is stored as one JSON file inside the signed-in user's own Google Drive, in the hidden
+   "appDataFolder" (scope drive.appdata). No server of our own. Paste your OAuth Client ID below,
+   or paste it once inside Settings (saved in this browser). */
+const SYNC_CLIENT_ID = '1022953895837-l5t0qckvvchb4uf8kvjo3hkvhbqkv9gl.apps.googleusercontent.com';   // e.g. '1234567890-abc123.apps.googleusercontent.com'
+const SYNC_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const SYNC_FILE = 'carlog-backup.json';
+const Sync = { token: null, exp: 0, busy: false, timer: null, msg: '', applying: false, gis: null };
+
+function syncClientId() { return SYNC_CLIENT_ID || (localStorage.getItem('carlog.sync.cid') || ''); }
+function syncState() { try { return JSON.parse(localStorage.getItem('carlog.sync') || '{}') || {}; } catch (e) { return {}; } }
+function setSyncState(o) { try { localStorage.setItem('carlog.sync', JSON.stringify(Object.assign(syncState(), o))); } catch (e) {} }
+const syncEnabled = () => !!syncState().enabled && !!syncClientId();
+const tokenValid = () => !!Sync.token && Date.now() < Sync.exp - 60000;
+
+function hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return h + ':' + str.length; }
+function syncPayload() {
+  const c = S.cfg || {};
+  return { v: 1, cars: S.cars, cfg: { currency: c.currency, payers: c.payers || [], companyName: c.companyName, activeCompany: c.activeCompany } };
+}
+const syncHash = () => hashStr(JSON.stringify(syncPayload()));
+function countsOf(p) {
+  const cars = (p && p.cars) || []; let f = 0, last = '';
+  cars.forEach(c => (c.fills || []).forEach(x => { f++; if (x.d > last) last = x.d; }));
+  return cars.length + ' car(s), ' + f + ' fill-up(s)' + (last ? ', last fill ' + last : '');
+}
+function syncRerender() { if (!sheet.open && (tab === 'data' || !getActiveCar())) render(); }
+function syncMsg(m) { Sync.msg = m; syncRerender(); }
+
+function loadGIS() {
+  if (Sync.gis) return Sync.gis;
+  Sync.gis = new Promise((res, rej) => {
+    if (window.google && google.accounts && google.accounts.oauth2) return res();
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => res();
+    sc.onerror = () => { Sync.gis = null; rej(new Error('offline')); };
+    document.head.appendChild(sc);
+  });
+  return Sync.gis;
+}
+
+function getToken(interactive, firstTime) {
+  if (tokenValid()) return Promise.resolve(Sync.token);
+  if (!interactive) return Promise.reject(new Error('reconnect'));
+  return loadGIS().then(() => new Promise((res, rej) => {
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: syncClientId(), scope: SYNC_SCOPE,
+      callback: r => {
+        if (r.error) return rej(new Error(r.error));
+        Sync.token = r.access_token; Sync.exp = Date.now() + (r.expires_in || 3600) * 1000; res(Sync.token);
+      },
+      error_callback: e => rej(new Error((e && e.type) || 'popup_closed'))
+    });
+    const em = syncState().email;
+    tc.requestAccessToken(firstTime ? { prompt: 'select_account' } : { prompt: '', hint: em || undefined });
+  }));
+}
+
+async function gfetch(url, opts, tok) {
+  const r = await fetch(url, Object.assign({}, opts, { headers: Object.assign({ Authorization: 'Bearer ' + tok }, (opts && opts.headers) || {}) }));
+  if (r.status === 401) { Sync.token = null; throw new Error('reconnect'); }
+  if (!r.ok) throw new Error('drive_' + r.status);
+  return r;
+}
+async function driveEmail(tok) {
+  const r = await gfetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', {}, tok);
+  const j = await r.json(); return (j.user && j.user.emailAddress) || '';
+}
+async function driveFind(tok) {
+  const q = encodeURIComponent("name='" + SYNC_FILE + "'");
+  const r = await gfetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=' + q + '&orderBy=modifiedTime%20desc&pageSize=10&fields=files(id,modifiedTime)', {}, tok);
+  const j = await r.json(); return (j.files && j.files[0]) || null;
+}
+async function driveRead(id, tok) {
+  const r = await gfetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media', {}, tok);
+  return r.json();
+}
+async function driveWrite(id, tok) {
+  const body = JSON.stringify(Object.assign(syncPayload(), { savedAt: Date.now() }));
+  if (id) {
+    const r = await gfetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media&fields=id,modifiedTime',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body }, tok);
+    return r.json();
+  }
+  const b = 'carlogb' + uid();
+  const multi = '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify({ name: SYNC_FILE, parents: ['appDataFolder'] }) +
+    '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + b + '--';
+  const r = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime',
+    { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: multi }, tok);
+  return r.json();
+}
+
+function applyRemotePayload(p) {
+  Sync.applying = true;
+  try {
+    S.cars = p.cars;
+    if (!S.cars.some(c => c.id === S.activeCarId)) S.activeCarId = S.cars[0] ? S.cars[0].id : null;
+    if (p.cfg) ['currency', 'payers', 'companyName', 'activeCompany'].forEach(k => { if (p.cfg[k] !== undefined) S.cfg[k] = p.cfg[k]; });
+    persistAll();
+  } finally { Sync.applying = false; }
+  closeSheet(); render();
+}
+
+async function syncNow(interactive) {
+  if (!syncClientId() || Sync.busy) return;
+  Sync.busy = true; syncMsg('Syncing…');
+  try {
+    const tok = await getToken(interactive === true, false);
+    const st = syncState();
+    const f = await driveFind(tok);
+    const lh = syncHash();
+    const localChanged = lh !== st.hash;
+    const remoteChanged = !!f && f.modifiedTime !== st.remoteMT;
+    let done = null;   // { hash, remoteMT }
+    const pushUp = async () => { const w = await driveWrite(f ? f.id : null, tok); done = { hash: syncHash(), remoteMT: w.modifiedTime }; };
+    const pullDown = async (remote) => {
+      applyRemotePayload(remote); done = { hash: syncHash(), remoteMT: f.modifiedTime };
+    };
+    const ask = (remote) => confirm(
+      'This device and Google Drive have different data.\n\n' +
+      'This device: ' + countsOf(syncPayload()) + '\nGoogle Drive: ' + countsOf(remote) + '\n\n' +
+      'OK = Use the Google Drive data (this device\'s data will be replaced)\n' +
+      'Cancel = Upload this device\'s data to Google Drive (the Drive data will be replaced)');
+
+    if (!f) {
+      if (S.cars.length) await pushUp(); else done = { hash: lh, remoteMT: '' };
+    } else if (!st.hash) {                       // first sync on this device
+      const remote = await driveRead(f.id, tok);
+      if (!remote || !Array.isArray(remote.cars)) throw new Error('bad_remote');
+      if (!S.cars.length) await pullDown(remote);
+      else if (hashStr(JSON.stringify({ v: 1, cars: remote.cars, cfg: remote.cfg })) === lh) done = { hash: lh, remoteMT: f.modifiedTime };
+      else if (ask(remote)) await pullDown(remote); else await pushUp();
+    } else if (remoteChanged && localChanged) {
+      const remote = await driveRead(f.id, tok);
+      if (!remote || !Array.isArray(remote.cars)) throw new Error('bad_remote');
+      if (ask(remote)) await pullDown(remote); else await pushUp();
+    } else if (remoteChanged) {
+      const remote = await driveRead(f.id, tok);
+      if (!remote || !Array.isArray(remote.cars)) throw new Error('bad_remote');
+      await pullDown(remote);
+    } else if (localChanged) {
+      if (!S.cars.length) {                      // never silently wipe the cloud copy
+        const remote = await driveRead(f.id, tok);
+        if (remote && remote.cars && remote.cars.length && !confirm('There is no car on this device. Also empty the Google Drive copy?\n\nOK = Empty the Drive copy\nCancel = Restore the data from Drive')) await pullDown(remote);
+        else await pushUp();
+      } else await pushUp();
+    } else done = { hash: st.hash, remoteMT: st.remoteMT };
+
+    setSyncState({ hash: done.hash, remoteMT: done.remoteMT, lastSync: Date.now() });
+    syncMsg('');
+  } catch (e) {
+    const m = String(e && e.message || e);
+    if (m === 'reconnect') syncMsg('Reconnect needed. Tap "Sync now".');
+    else if (m === 'offline' || m === 'Failed to fetch') syncMsg('No internet. It will sync later.');
+    else if (/popup|access_denied|closed/i.test(m)) syncMsg('Google sign-in was not completed.');
+    else if (m === 'drive_403') syncMsg('Google Drive API is not enabled or permission was not granted (check setup).');
+    else syncMsg('Sync fail: ' + m);
+  } finally { Sync.busy = false; syncRerender(); }
+}
+
+function syncSoon() {
+  if (!ready || Sync.applying || !syncEnabled() || !tokenValid()) return;
+  if (syncHash() === syncState().hash) return;
+  clearTimeout(Sync.timer); Sync.timer = setTimeout(() => syncNow(false), 2500);
+}
+
+async function syncSignIn() {
+  if (!syncClientId()) { toast('Please save the Google Client ID first.'); return; }
+  try {
+    const tok = await getToken(true, true);
+    const email = await driveEmail(tok);
+    setSyncState({ enabled: true, email, hash: '', remoteMT: '' });
+    await syncNow(false);
+    toast('Google Drive sync is on.');
+  } catch (e) {
+    const m = String(e && e.message || e);
+    syncMsg(m === 'offline' ? 'No internet.' : /popup|access_denied|closed/i.test(m) ? 'Google sign-in was not completed.' : m === 'drive_403' ? 'Google Drive API is not enabled (check setup).' : 'Sign-in failed: ' + m);
+  }
+  render();
+}
+
+function syncCardHTML() {
+  const cid = syncClientId(), st = syncState();
+  const inp = 'flex:1;min-width:0;padding:10px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px';
+  let body;
+  if (!cid) {
+    body = `<p class="small muted" style="margin:4px 0 10px">Setup needed: paste your Google <b>Client ID</b> here (one time).</p>
+      <div style="display:flex;gap:8px"><input id="sync-cid" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" style="${inp}"><button class="btn small" data-act="sync-save-cid">Save</button></div>`;
+  } else if (!st.enabled) {
+    body = `<div style="display:flex;justify-content:center;margin-top:12px"><button class="btn small" data-act="sync-signin" style="width:auto;min-width:200px"><svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.35 12.27c0-.72-.06-1.42-.18-2.09H12v3.95h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.25z"/><path fill="#34A853" d="M12 21.75c2.63 0 4.84-.87 6.45-2.35l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.29v2.53A9.75 9.75 0 0 0 12 21.75z"/><path fill="#FBBC05" d="M6.54 13.84A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.84V7.63H3.29A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.04 4.37l3.25-2.53z"/><path fill="#EA4335" d="M12 6.13c1.43 0 2.72.49 3.73 1.45l2.8-2.8C16.84 3.14 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.71 5.38l3.25 2.53C7.31 7.85 9.46 6.13 12 6.13z"/></svg>Sign in with Google</button></div>
+      ${Sync.msg ? `<p class="small" style="margin-top:8px;text-align:center;color:var(--late)">${esc(Sync.msg)}</p>` : ''}`;
+  } else {
+    const last = st.lastSync ? new Date(st.lastSync).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never';
+    body = `<p class="small muted" style="margin:4px 0 10px">Login: <b>${esc(st.email || 'Google account')}</b> &bull; Last sync: <b>${esc(last)}</b>${tokenValid() ? '' : ' &bull; <b>Reconnect needed</b>'}</p>
+      <div class="btn-grid"><button class="btn small" data-act="sync-now">${Sync.busy ? 'Syncing…' : '🔄 Sync now'}</button><button class="btn small ghost" data-act="sync-signout">Sign out</button></div>
+      ${Sync.msg ? `<p class="small muted" style="margin-top:8px">${esc(Sync.msg)}</p>` : ''}`;
+  }
+  return `
+        <div class="switch-card">
+          <div class="switch-card-header"${st.enabled ? '' : ' style="justify-content:center"'}>
+            <span class="switch-badge">☁️ Google Drive Sync</span>
+            ${st.enabled ? '<span class="small muted">ON</span>' : ''}
+          </div>
+          ${body}
+        </div>
+`;
+}
+
+/* ---------- 4. PDF REPORT GENERATION ---------- */
+function shiftMonths(dstr, n) {
+  const p = dstr.split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return ymd(d);
+}
+
+function openPdfRangeModal() {
+  const car = getActiveCar();
+  if (!car) { toast('Add a car first.'); return; }
+  const to = today();
+  const from = shiftMonths(to, -3);
+  openSheet('pdf-range', '', 'Select Report Duration', `
+    <p class="small muted" style="margin:0 0 12px">Pick a date range for the PDF report. Maximum span is 3 months.</p>
+    <div class="field"><label for="pr-from">From</label><input id="pr-from" type="date" value="${esc(from)}" max="${esc(to)}"></div>
+    <div class="field"><label for="pr-to">To</label><input id="pr-to" type="date" value="${esc(to)}" max="${esc(to)}"></div>
+    <button class="btn" style="width:100%;margin-top:6px" data-act="confirm-pdf-range">📄 Generate Report</button>
+  `);
+  $('#pr-from').addEventListener('change', e => {
+    const f = e.target.value; if (!f) return;
+    const toEl = $('#pr-to'); const cap = shiftMonths(f, 3);
+    toEl.min = f; toEl.max = cap < today() ? cap : today();
+    if (toEl.value < f || toEl.value > toEl.max) toEl.value = toEl.max;
+  });
+}
+
+function confirmPdfRange() {
+  const from = $('#pr-from').value, to = $('#pr-to').value;
+  if (!from || !to) { toast('Please select both dates.'); return; }
+  if (from > to) { toast('"From" date must be before "To" date.'); return; }
+  const maxTo = shiftMonths(from, 3);
+  if (to > maxTo) { toast('Range too long — max 3 months at once.'); return; }
+  exportPdfReport(from, to);
+}
+
+function exportPdfReport(fromDate, toDate) {
+  const car = getActiveCar();
+  const c = C;
+  const odo = c.odo || car.odometer || 0;
+  const inRange = d => (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
+  const periodFills = c.D.filter(f => inRange(f.d));
+  const periodPayments = (car.payments || []).filter(p => inRange(p.d));
+  const periodAvgs = periodFills.filter(r => r.avg != null).map(r => r.avg);
+  let periodRun = 0, periodAll = 0; const periodBy = {};
+  periodFills.forEach(r => {
+    periodBy[r.b] = (periodBy[r.b] || 0) + r.a; periodAll += r.a;
+    if (r.run > 0) periodRun += r.run;
+  });
+  const periodRecBy = {};
+  periodPayments.forEach(p => { const k = coOfPay(p); periodRecBy[k] = (periodRecBy[k] || 0) + p.a; });
+  const periodReceived = periodPayments.reduce((s, p) => s + p.a, 0);
+  const periodCos = companies().filter(co => co.id === activeCoId() || (periodBy[co.id] || 0) > 0 || (periodRecBy[co.id] || 0) > 0);
+  const periodLabel = fromDate && toDate ? `${fmtDate(fromDate)} &ndash; ${fmtDate(toDate)}` : 'All time';
+
+  let svcRows = '';
+  (car.service || []).forEach(s => {
+    const sc = svcCalc(s);
+    if (!sc) return;
+    const dueTxt = sc.left >= 0 ? `${fmt0(sc.left)} km left` : `Overdue by ${fmt0(-sc.left)} km`;
+    const stateTxt = { ok: 'On Track', soon: 'Due Soon', late: 'Overdue' }[sc.state];
+    svcRows += `
+      <tr>
+        <td><b>${esc(s.n)}</b></td>
+        <td class="num">${fmt0(sc.last.k)} km</td>
+        <td class="num">${fmt0(sc.last.i)} km</td>
+        <td class="num">${fmt0(sc.next)} km</td>
+        <td>${stateTxt}</td>
+        <td class="num">${dueTxt}</td>
+      </tr>
+    `;
+  });
+
+  let fillsRows = '';
+  periodFills.slice().reverse().forEach(f => {
+    fillsRows += `
+      <tr>
+        <td>${fmtDate(f.d, true)}</td>
+        <td class="num">${f.rental ? 'Rental' : fmt0(f.k) + ' km'}</td>
+        <td class="num">AED ${fmt2(f.a)}</td>
+        <td class="num">${f.r ? fmt2(f.r) : '-'}</td>
+        <td>${esc(payerName(f.b))}</td>
+        <td class="num">${f.avg != null ? fmt2(f.avg) + ' km/L' : '-'}</td>
+      </tr>
+    `;
+  });
+
+  const reportHtml = `
+    <div class="p-head">
+      <div>
+        <h1>Car Maintenance & Fuel Report</h1>
+        <p style="margin-top:4px"><b>Vehicle:</b> ${esc(car.name)} ${car.plate ? '(' + esc(car.plate) + ')' : ''}</p>
+      </div>
+      <div style="text-align:right">
+        <p><b>Report Period:</b> ${periodLabel}</p>
+        <p><b>Current Odometer:</b> ${fmt0(odo)} km</p>
+      </div>
+    </div>
+
+    <div class="p-grid">
+      <div class="p-card"><b>${periodAvgs.length ? fmt2(mean(periodAvgs)) + ' km/L' : 'N/A'}</b><span>Period Mileage</span></div>
+      <div class="p-card"><b>AED ${fmt2(periodAll)}</b><span>Period Fuel Spend</span></div>
+      <div class="p-card"><b>AED ${fmt2(periodReceived)}</b><span>Reimbursed (Period)</span></div>
+      <div class="p-card"><b>${fmt0(periodRun)} km</b><span>Driven (Period)</span></div>
+    </div>
+
+    <div class="p-sec">
+      <h2>Service & Maintenance Status</h2>
+      <table class="p-tbl">
+        <thead>
+          <tr>
+            <th>Service Name</th>
+            <th class="num">Last Done</th>
+            <th class="num">Interval</th>
+            <th class="num">Next Due</th>
+            <th>Status</th>
+            <th class="num">Remaining</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${svcRows || '<tr><td colspan="6" style="text-align:center">No service records</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="p-sec">
+      <h2>Fuel Summary by Payer (Period)</h2>
+      <table class="p-tbl" style="width: auto; min-width: 320px;">
+        ${payersFor(periodBy).map(p => `<tr><td><b>${esc(p.n)} Paid:</b></td><td class="num">AED ${fmt2(periodBy[p.id] || 0)}</td></tr>`).join('')}
+        ${periodCos.map(co => `<tr><td><b>Received from ${esc(co.n)}:</b></td><td class="num">AED ${fmt2(periodRecBy[co.id] || 0)}</td></tr>
+        <tr style="font-weight:700"><td>Net ${esc(co.n)} (Paid − Received):</td><td class="num">AED ${fmt2((periodBy[co.id] || 0) - (periodRecBy[co.id] || 0))}</td></tr>`).join('')}
+      </table>
+    </div>
+
+    <div class="p-sec">
+      <h2>Fuel Fill-ups (${periodLabel})</h2>
+      <table class="p-tbl">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th class="num">Odometer</th>
+            <th class="num">Amount</th>
+            <th class="num">Rate/L</th>
+            <th>Paid By</th>
+            <th class="num">Avg km/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${fillsRows || '<tr><td colspan="6" style="text-align:center">No fuel records</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  $('#print-report').innerHTML = reportHtml;
+
+  openSheet('pdf-preview', '', 'PDF Report Preview', `
+    <div style="margin-bottom:14px;display:flex;gap:10px">
+      <button class="btn" style="flex:1" data-act="trigger-print">🖨️ Print / Save as PDF</button>
+      <button class="btn ghost small" data-act="close">Close</button>
+    </div>
+    <div style="background:#fff;color:#000;padding:16px;border-radius:10px;font-size:13px;border:1px solid var(--line);max-height:60vh;overflow-y:auto">
+      ${reportHtml}
+    </div>
+  `);
+}
+
+/* ---------- 5. CLEAR / RESET DATA MODAL ---------- */
+function openResetModal() {
+  const car = getActiveCar();
+  if (!car) { toast('Add a car first.'); return; }
+  openSheet('reset-data', '', 'Reset & Clear Data Hub', `
+    <div class="info-box" style="border-color:var(--late);background:color-mix(in srgb,var(--late) 10%,var(--surface));margin-bottom:14px">
+      <b>Warning:</b> Reset actions cannot be undone. Please download a backup if you wish to preserve your existing records.
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <button class="btn small ghost" style="width:100%" data-act="download-json">💾 Create Backup First (.json)</button>
+    </div>
+
+    <h2 style="font-size:15px;margin-bottom:10px">Choose an Action:</h2>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      
+      <!-- Option 1: Reset Active Car Records -->
+      <div style="padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <b style="font-size:14px">1. Reset Active Car Records</b>
+          <span style="font-size:12px;color:var(--ink-2)">(${esc(car.name)})</span>
+        </div>
+        <p class="small muted" style="margin-bottom:10px">Clears all fuel fills and payment history for <b>${esc(car.name)}</b>. Resets service intervals from current odometer. Keeps car profile intact.</p>
+        <button class="btn small danger" data-act="reset-active-car">Reset Active Car</button>
+      </div>
+
+      <!-- Option 2: Add Fresh New Car -->
+      <div style="padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2)">
+        <b style="font-size:14px;display:block;margin-bottom:4px">2. Start New Car (Keep Existing Data)</b>
+        <p class="small muted" style="margin-bottom:10px">Create a brand new car profile with blank records, without deleting your current cars or history.</p>
+        <button class="btn small ghost" data-act="add-car-prompt">➕ Add New Car Record</button>
+      </div>
+
+      <!-- Option 3: Factory Reset All -->
+      <div style="padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2)">
+        <b style="font-size:14px;display:block;margin-bottom:4px;color:var(--late)">3. Factory Reset Everything</b>
+        <p class="small muted" style="margin-bottom:10px">Completely wipes ALL cars, fills, services, payments, and settings from this browser. Starts completely fresh.</p>
+        <button class="btn small danger" data-act="factory-reset">Factory Reset All</button>
+      </div>
+
+    </div>
+  `);
+}
+
+/* ---------- UI MODALS & SHEETS ---------- */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), Math.max(3400, String(msg).length * 70));
+}
+
+const sheet = $('#sheet');
+function openSheet(kind, id, title, body) {
+  sheet.dataset.kind = kind; sheet.dataset.id = id || '';
+  sheet.setAttribute('aria-label', title);
+  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" data-act="close" aria-label="Close">&times;</button></div>${body}</div>`;
+  if (!sheet.open) sheet.showModal();
+}
+function closeSheet() { if (sheet.open) sheet.close(); }
+sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+
+function confirmTap(el, label, fn) {
+  if (el.dataset.armed) { fn(); return; }
+  el.dataset.armed = '1'; el.dataset.orig = el.textContent; el.textContent = label;
+  setTimeout(() => { if (el.isConnected && el.dataset.armed) { delete el.dataset.armed; el.textContent = el.dataset.orig; } }, 4000);
+}
+
+const PLUS = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+
+/* ---------- MULTI-CAR: CAR SELECTION (Settings tab) ---------- */
+function carSelectionSection() {
+  const list = S.cars.map(c => {
+    const isActive = c.id === S.activeCarId;
+    const curKm = c.odometer || 0;
+    const bal = coBalance(c, activeCoId());
+    return `
+      <div class="car-card ${isActive ? 'active' : ''}">
+        <div class="car-card-body" data-act="switch-car" data-id="${esc(c.id)}">
+          <b>${esc(c.name)} ${isActive ? '<span class="badge-active">ACTIVE</span>' : ''}</b>
+          <span>${esc(c.plate || 'No Plate')} &middot; ${fmt0(curKm)} km &middot; Pending: AED ${fmt2(bal)}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:8px">
+          <button class="btn small ghost" data-act="edit-car" data-id="${esc(c.id)}">Edit</button>
+          ${S.cars.length > 1 ? `<button class="btn small danger" data-act="del-car" data-id="${esc(c.id)}">Delete</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <section class="sec" id="car-selection-sec">
+      <h2>Car Selection</h2>
+      <div class="panel pad" style="margin-top:10px">
+        <div style="margin-bottom:14px">${list}</div>
+        <button class="btn" style="width:100%" data-act="add-car-prompt">${PLUS} Add New Car</button>
+      </div>
+    </section>
+  `;
+}
+
+function addCarSheet() {
+  openSheet('add-car', '', 'Add New Car', `
+    <div class="field"><label for="c-name">Car Name / Model</label><input id="c-name" type="text" placeholder="e.g. Honda Civic, Nissan Patrol" autocomplete="off"></div>
+    <div class="field"><label for="c-plate">Number Plate / Reg No (optional)</label><input id="c-plate" type="text" placeholder="e.g. DXB-12345" autocomplete="off"></div>
+    <div class="field"><label for="c-km">Current Odometer (km)</label><input id="c-km" type="text" inputmode="numeric" placeholder="e.g. 150000" autocomplete="off"></div>
+    <div class="actions"><button class="btn" data-act="save-new-car">Add Car</button></div>
+  `);
+  $('#c-name', sheet).focus();
+}
+
+function saveNewCar() {
+  const name = $('#c-name', sheet).value.trim();
+  const plate = $('#c-plate', sheet).value.trim();
+  const km = parseNum($('#c-km', sheet).value) || 0;
+  if (!name) { toast('Car name is required.'); return; }
+
+  const newCar = {
+    id: 'car_' + uid(),
+    name,
+    plate,
+    odometer: km,
+    fills: [],
+    payments: [],
+    service: [
+      { i: 'oil', n: 'Oil change', h: [{ k: km, i: 5000 }] },
+      { i: 'tyre', n: 'Tyre rotation', h: [{ k: km, i: 10000 }] }
+    ]
+  };
+  S.cars.push(newCar);
+  S.activeCarId = newCar.id;
+  persistAll();
+  closeSheet();
+  render();
+  toast(`${name} added and set as active!`);
+}
+
+function editCarSheet(id) {
+  const c = S.cars.find(x => x.id === id);
+  if (!c) return;
+  openSheet('edit-car', id, 'Edit ' + c.name, `
+    <div class="field"><label for="ec-name">Car Name / Model</label><input id="ec-name" type="text" value="${esc(c.name)}"></div>
+    <div class="field"><label for="ec-plate">Number Plate / Reg No</label><input id="ec-plate" type="text" value="${esc(c.plate || '')}"></div>
+    <div class="field"><label for="ec-km">Current Odometer (km)</label><input id="ec-km" type="text" inputmode="numeric" value="${c.odometer || ''}"></div>
+    <div class="actions">
+      <button class="btn" data-act="save-edit-car">Save Changes</button>
+      ${S.cars.length > 1 ? `<button class="btn danger" data-act="del-car-from-edit" data-id="${esc(c.id)}">Delete Car</button>` : ''}
+    </div>
+  `);
+}
+
+function saveEditCar() {
+  const id = sheet.dataset.id;
+  const name = $('#ec-name', sheet).value.trim();
+  const plate = $('#ec-plate', sheet).value.trim();
+  const km = parseNum($('#ec-km', sheet).value);
+  if (!name) { toast('Car name cannot be empty.'); return; }
+  const c = S.cars.find(x => x.id === id);
+  if (c) {
+    c.name = name;
+    c.plate = plate;
+    if (km != null && km >= 0) c.odometer = Math.round(km);
+  }
+  persistAll();
+  closeSheet();
+  render();
+  toast('Car details updated successfully.');
+}
+
+/* ---------- VIEWS ---------- */
+function odometerHTML(km, animate) {
+  let s = String(Math.max(0, Math.round(km || 0)));
+  if (s.length < 6) s = s.padStart(6, '0');
+  const n = s.length; let h = '';
+  for (let i = 0; i < n; i++) {
+    const gap = (n - i) % 3 === 0 && i > 0 ? ' gap' : '';
+    let col = '';
+    for (let d = 0; d < 10; d++) col += '<i>' + d + '</i>';
+    h += `<span class="drum${gap}"><span class="strip${animate ? ' roll' : ''}" style="--d:${s[i]};--i:${i}">${col}</span></span>`;
+  }
+  return `<div class="odo-digits" role="img" aria-label="Odometer ${fmt0(km || 0)} kilometres">${h}<span class="odo-unit">km</span></div>`;
+}
+
+function svcRow(it, full) {
+  const c = svcCalc(it);
+  if (!c) return '';
+  const leftTxt = c.left >= 0 ? fmt0(c.left) + ' km left' : 'Overdue by ' + fmt0(-c.left) + ' km';
+  const stateTxt = { ok: 'On track', soon: 'Due soon', late: 'Overdue' }[c.state];
+  let h = `
+    <div class="svc">
+      <div class="svc-top">
+        <span class="svc-name">${esc(it.n)}</span>
+        <span class="svc-left num ${c.state}">${leftTxt}</span>
+      </div>
+      <div class="bar ${c.state}" role="img" aria-label="${esc(it.n)}: ${stateTxt}, ${leftTxt}">
+        <span style="width:${Math.round(c.frac * 100)}%"></span>
+      </div>
+      <div class="svc-meta num">
+        <span>Next at ${fmt0(c.next)} km</span>
+        <span>Every ${fmt0(c.last.i)} km</span>
+      </div>
+  `;
+  if (full) {
+    h += `
+      <div class="svc-meta num" style="margin-top:4px">
+        <span>Last done at ${fmt0(c.last.k)} km</span>
+        <span class="${c.state}">${stateTxt}</span>
+      </div>
+      <div class="svc-actions">
+        <button class="btn small" data-act="svc-done" data-id="${esc(it.i)}">Mark done</button>
+        <button class="btn small ghost" data-act="svc-edit" data-id="${esc(it.i)}">Edit</button>
+      </div>
+    `;
+    const rows = c.h.slice().reverse().map((e, idx) => {
+      const j = c.h.length - 1 - idx; let note = '';
+      if (j > 0) {
+        const due = c.h[j - 1].k + c.h[j - 1].i, diff = e.k - due;
+        note = diff > 0 ? fmt0(diff) + ' km late' : (diff < 0 ? fmt0(-diff) + ' km early' : 'on time');
+      }
+      return `<div class="hrow num"><span>Done at ${fmt0(e.k)} km</span><span class="muted">${note}</span></div>`;
+    }).join('');
+    h += `<details class="hist"><summary>History (${c.h.length})</summary>${rows}</details>`;
+  }
+  return h + '</div>';
+}
+
+function fmtStamp(ms) {
+  const d = new Date(ms);
+  return ymd(d) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function backupSection() {
+  const lastLocal = S.meta && S.meta.lastBackup ? S.meta.lastBackup : 'Never';
+  const st = syncState(), cid = syncClientId();
+  const lastDrive = st.enabled && st.lastSync ? fmtStamp(st.lastSync) : 'Never';
+  const bs = 'width:100%;max-width:260px;margin-top:0';
+  let third = '', after = '';
+  if (!cid) {
+    after = `<div style="width:100%;text-align:left;margin-top:6px">${syncCardHTML()}</div>`;
+  } else if (st.enabled) {
+    third = `<button class="btn" data-act="sync-now" style="${bs}">${Sync.busy ? 'Syncing…' : 'Sync now'}</button>`;
+    after = `<p class="small muted" style="text-align:center;margin-top:2px">Signed in as <b>${esc(st.email || 'Google account')}</b>${tokenValid() ? '' : ' &bull; Reconnect needed'}</p>
+      <button class="btn small ghost" data-act="sync-signout" style="margin-top:0">Sign out</button>`;
+  } else {
+    third = `<button class="btn" data-act="sync-signin" style="${bs}"><svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.35 12.27c0-.72-.06-1.42-.18-2.09H12v3.95h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.25z"/><path fill="#34A853" d="M12 21.75c2.63 0 4.84-.87 6.45-2.35l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.29v2.53A9.75 9.75 0 0 0 12 21.75z"/><path fill="#FBBC05" d="M6.54 13.84A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.84V7.63H3.29A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.04 4.37l3.25-2.53z"/><path fill="#EA4335" d="M12 6.13c1.43 0 2.72.49 3.73 1.45l2.8-2.8C16.84 3.14 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.71 5.38l3.25 2.53C7.31 7.85 9.46 6.13 12 6.13z"/></svg>Sign in with Google</button>`;
+  }
+  if (cid && Sync.msg) after += `<p class="small" style="text-align:center;margin-top:2px;color:var(--late)">${esc(Sync.msg)}</p>`;
+  return `
+    <section class="sec" id="data-hub-sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h2>Data Management & Sync</h2>
+       </div>
+
+      <div class="panel pad" style="display:flex;flex-direction:column;gap:14px">
+        <!-- 1. Backup & Restore (local file + Google Drive) -->
+        <div class="switch-card">
+          <div class="switch-card-header">
+            <span class="switch-badge">💾 Device Backup & Restore</span>
+            <span class="small muted">JSON</span>
+          </div>
+          <p class="small muted" style="margin:4px 0 12px">
+            Last backup<br>Local: <b>${esc(lastLocal)}</b><br>Drive: <b>${esc(lastDrive)}</b>
+          </p>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+            ${third}
+            <button class="btn ghost" data-act="upload-json" style="${bs}">Restore Backup</button>
+            <button class="btn ghost" data-act="download-json" style="${bs}">Create Backup</button>
+            ${after}
+          </div>
+        </div>
+
+        <!-- 2. Export Switches -->
+        <div class="switch-card">
+          <div class="switch-card-header">
+            <span class="switch-badge">📤 Export</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:12px">
+            <button class="btn" data-act="open-pdf-range-modal" style="width:100%;max-width:260px;margin-top:0">Export PDF</button>
+            <button class="btn ghost" data-act="export-excel" style="width:100%;max-width:260px;margin-top:0">Export Excel</button>
+          </div>
+        </div>
+
+      </div>
+
+      <button class="btn danger" style="width:100%;margin-top:14px" data-act="open-reset-modal">🗑️ Clear / Reset Data</button>
+    </section>
+  `;
+}
+
+function prevCompaniesHTML(c) {
+  const prev = c.ledger.filter(l => l.id !== c.coId);
+  if (!prev.length) return '';
+  return `
+    <h2 style="margin-top:18px">Previous companies</h2>
+    <div class="panel pad" style="margin-top:10px">
+      ${prev.map(l => `
+        <div class="prow">
+          <i style="background:${payerColor(l.id)}"></i>
+          <span class="pn">${esc(l.n)}<span class="muted small num" style="display:block;font-weight:400">Fuel ${fmt2(l.fuel)} &minus; Received ${fmt2(l.rec)}</span></span>
+          <b class="num">AED ${fmt2(l.bal)}</b>
+          <button class="btn small ghost" data-act="add-pay" data-co="${esc(l.id)}">Record payment</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function viewHome() {
+  const c = C; const lr = c.lastReal; const car = c.car;
+  let h = '';
+  h += `
+    <section class="odo" aria-label="Odometer">
+      <div class="odo-label">
+        <span>${esc(car.name)}</span>
+        <span>${esc(car.plate || '')}</span>
+      </div>
+      ${odometerHTML(c.odo, animateOdo)}
+      <p class="odo-meta num">${lr ? 'Last fill ' + fmtDate(lr.d) + (lr.avg != null ? ' &middot; ' + fmt2(lr.avg) + ' km/L' : '') : 'No fill-ups yet'}</p>
+      <button class="btn on-dark" data-act="add-fill">${PLUS} Add fill-up</button>
+    </section>
+  `;
+
+  h += '<section class="sec"><h2>Service & Maintenance</h2><div class="panel">';
+  h += (car.service && car.service.length) ? car.service.map(it => svcRow(it, false)).join('') : '<div class="empty">No service reminders yet.<br><button class="btn small" data-act="svc-add">Add reminder</button></div>';
+  h += '</div></section>';
+
+  const bal = c.balance, coId = c.coId, coN = payerName(coId);
+  h += `
+    <section class="sec">
+      <h2>Pending from ${esc(coN)}</h2>
+      <div class="pending">
+        <div class="big num"><span class="cur">AED</span> ${fmt2(bal)}</div>
+        <p class="muted small num">${esc(coN)} Fuel ${fmt2(c.comp)} &minus; Received ${fmt2(c.received)}</p>
+        ${bal < 0 ? '<p class="small" style="margin-top:6px;color:var(--ok)">' + esc(coN) + ' has paid more than the billed fuel.</p>' : ''}
+        <button class="btn" data-act="add-pay" data-co="${esc(coId)}">Record payment</button>
+      </div>
+      ${prevCompaniesHTML(c)}
+    </section>
+  `;
+
+  h += `
+    <section class="sec">
+      <h2>Fuel Average</h2>
+      <div class="panel pad">
+        <div class="avgline num">
+          <div><b>${c.avg != null ? fmt2(c.avg) : '&ndash;'}</b><span class="muted small">km/L overall</span></div>
+          ${c.avg10 != null ? `<div class="sub"><b>${fmt2(c.avg10)}</b><span class="muted small">km/L, last 10 fills</span></div>` : ''}
+          ${c.avgLast != null ? `<div class="sub"><b>${fmt2(c.avgLast)}</b><span class="muted small">km/L, last fill</span></div>` : ''}
+        </div>
+      </div>
+    </section>
+  `;
+
+  const tot = c.total || 1;
+  const wp = payersFor(c.byPayer).map(p => {
+    const v = c.byPayer[p.id] || 0;
+    return { id: p.id, n: p.n, v, pct: Math.round(v / tot * 1000) / 10 };
+  });
+  h += `
+    <section class="sec">
+      <h2>Who Paid for Fuel</h2>
+      <div class="panel pad">
+        <div class="split" role="img" aria-label="${esc(wp.map(x => x.n + ' ' + x.pct + '%').join(', '))}">
+          ${wp.map(x => `<span style="width:${(x.v / tot * 100)}%;background:${payerColor(x.id)}"></span>`).join('')}
+        </div>
+        <div class="legend num">
+          ${wp.map(x => `<i style="background:${payerColor(x.id)}"></i><span>${esc(x.n)} &middot; ${x.pct}%</span><span class="v">AED ${fmt2(x.v)}</span>`).join('')}
+        </div>
+      </div>
+    </section>
+  `;
+
+  h += `<p class="foot-note">Active Car: <b>${esc(car.name)}</b> &middot; Saved securely in browser storage.</p>`;
+  return h;
+}
+
+function themeSection() {
+  const theme = (S.cfg && S.cfg.theme) || 'system';
+  return `
+    <section class="sec" id="theme-sec">
+      <h2>Theme</h2>
+      <div class="panel pad" style="margin-top:10px">
+        <div class="seg" role="group" aria-label="Theme selection">
+          <button type="button" data-act="set-theme" data-theme="light" aria-pressed="${theme === 'light'}">☀️ Light</button>
+          <button type="button" data-act="set-theme" data-theme="dark" aria-pressed="${theme === 'dark'}">🌙 Dark</button>
+          <button type="button" data-act="set-theme" data-theme="system" aria-pressed="${theme === 'system'}">⚙️ Follow System</button>
+        </div>
+       </div>
+    </section>
+  `;
+}
+
+function payersSection() {
+  const used = {};
+  S.cars.forEach(c => (c.fills || []).forEach(f => { used[f.b] = (used[f.b] || 0) + 1; }));
+  const act = activeCoId();
+  const coRows = companies().map(co => {
+    const isAct = co.id === act, canDel = co.id !== 'C' && payerUsage(co.id) === 0;
+    return `
+    <div class="prow">
+      <i style="background:${payerColor(co.id)}"></i>
+      <span class="pn">${esc(co.n)}${isAct ? ' <span class="badge-active">ACTIVE</span>' : ''}<span class="muted small" style="display:block;font-weight:400">${isAct ? 'Current company' : 'Previous company'} &middot; ${used[co.id] || 0} fills</span></span>
+      ${isAct ? '' : `<button class="btn small ghost" data-act="company-activate" data-id="${esc(co.id)}">Make active</button>`}
+      <button class="btn small ghost" data-act="payer-rename" data-id="${esc(co.id)}">Rename</button>
+      ${canDel ? `<button class="btn small danger" data-act="payer-del" data-id="${esc(co.id)}">Delete</button>` : ''}
+    </div>`;
+  }).join('');
+  const selfRow = `
+    <div class="prow">
+      <i style="background:${payerColor('S')}"></i>
+      <span class="pn">Self</span>
+      <span class="muted small">Default</span>
+    </div>`;
+  const others = customPayers().filter(p => !p.co).map(p => `
+    <div class="prow">
+      <i style="background:${payerColor(p.id)}"></i>
+      <span class="pn">${esc(p.n)}</span>
+      <span class="muted small">${used[p.id] || 0} fills</span>
+      <button class="btn small ghost" data-act="payer-rename" data-id="${esc(p.id)}">Rename</button>
+      <button class="btn small danger" data-act="payer-del" data-id="${esc(p.id)}">Delete</button>
+    </div>`).join('');
+  return `
+    <section class="sec" id="payers-sec">
+      <h2>Companies &amp; Fuel Payers</h2>
+      <div class="panel pad" style="margin-top:10px">
+        <p class="small" style="font-weight:600;margin-bottom:2px">Companies</p>
+        ${coRows}
+        <button class="btn small" style="margin-top:10px" data-act="company-new">+ Switch to a new company</button>
+         
+        <p class="small" style="font-weight:600;margin:16px 0 2px">Other payers</p>
+        ${selfRow}${others}
+        <button class="btn small" style="margin-top:10px" data-act="add-payer">+ Add New Payer</button>
+      </div>
+    </section>
+  `;
+}
+
+function viewData() {
+  let h = carSelectionSection();
+  h += payersSection();
+  h += themeSection();
+  h += backupSection();
+  h += `<p class="foot-note">Active Car: <b>${esc(C.car.name)}</b> &middot; Saved securely in browser storage.</p>`;
+  return h;
+}
+
+function sparkline(vals, avg) {
+  const n = vals.length; if (n < 2) return '';
+  const w = 320, h = 100, p = 8, pr = 70;
+  const mn = Math.floor(Math.min.apply(null, vals) - 0.5), mx = Math.ceil(Math.max.apply(null, vals) + 0.5);
+  const x = i => p + i * (w - p - pr) / (n - 1), y = v => h - p - (v - mn) / (mx - mn || 1) * (h - 2 * p);
+  const pts = vals.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+  const lx = x(n - 1), ly = y(vals[n - 1]), ay = y(avg);
+  return `
+    <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Mileage sparkline for last ${n} fills">
+      <line x1="${p}" x2="${w - pr + 8}" y1="${ay.toFixed(1)}" y2="${ay.toFixed(1)}" style="stroke:var(--ink-2);stroke-width:1;stroke-dasharray:4 4"/>
+      <polyline points="${pts}" style="fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>
+      <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4.5" style="fill:var(--company)"/>
+      <text x="${w - pr + 14}" y="${(ay + 4).toFixed(1)}">avg ${fmt2(avg)}</text>
+    </svg>
+  `;
+}
+
+function fillRow(r) {
+  const pcol = payerColor(r.b);
+  const chip = `<span class="chip" style="color:${pcol};background:color-mix(in srgb,${pcol} 14%,var(--surface))">${esc(payerName(r.b))}</span>`;
+  const l2 = r.rental ? 'Rental car &middot; no odometer' : fmt0(r.k) + ' km' + (r.run != null && r.run > 0 ? ' &middot; +' + fmt0(r.run) + ' km' : '') + (r.days > 0 ? ' &middot; ' + r.days + ' d' : '');
+  const rt = r.rental ? '' : (r.avg != null ? fmt2(r.avg) + ' km/L' : '&ndash;');
+  return `
+    <button class="row" data-act="edit-fill" data-id="${esc(r.i)}">
+      <span class="r1"><b>${fmtDate(r.d, true)}</b>${chip}<span class="amt">${fmt2(r.a)}</span></span>
+      <span class="r2"><span>${l2}</span><span>${rt}</span></span>
+    </button>
+  `;
+}
+
+function viewFuel() {
+  const c = C; let h = '<h1 class="page-title" style="margin-bottom:12px">Fuel Log</h1>';
+  if (!c.D.length) {
+    return h + `<div class="panel empty">No fill-ups recorded for this car yet.<br><button class="btn" data-act="add-fill">${PLUS} Add First Fill-up</button></div>`;
+  }
+  h += `
+    <div class="stats">
+      <div class="panel stat"><b class="num">${c.avg != null ? fmt2(c.avg) : '&ndash;'}</b><span>km/L average</span></div>
+      <div class="panel stat"><b class="num">${fmt0(c.totalRun)}</b><span>km driven</span></div>
+      <div class="panel stat"><b class="num">${fmt0(c.total)}</b><span>AED on fuel</span></div>
+    </div>
+  `;
+  const last = c.avgs.slice(-40);
+  if (last.length > 1) {
+    h += `<section class="sec"><h2>km/L, last ${last.length} fill-ups</h2><div class="panel chartbox">${sparkline(last, c.avg)}</div></section>`;
+  }
+  h += `
+    <div class="sec">
+      <div class="seg" role="group" aria-label="Filter">
+        ${[['all','All']].concat(payersFor(c.byPayer).map(p => [p.id, p.n])).map(x => `<button data-act="filter" data-f="${esc(x[0])}" aria-pressed="${filter === x[0]}">${esc(x[1])}</button>`).join('')}
+      </div>
+    </div>
+  `;
+  const rows = c.D.filter(r => filter === 'all' || r.b === filter).reverse();
+  if (!rows.length) return h + '<div class="panel empty" style="margin-top:14px">Nothing here yet.</div>';
+
+  let cur = null, buf = [];
+  const flush = () => {
+    if (cur == null) return;
+    const tot = buf.reduce((s, r) => s + r.a, 0);
+    const by = {}; buf.forEach(r => { by[r.b] = (by[r.b] || 0) + r.a; });
+    const order = allPayers().map(p => p.id).filter(id => by[id] > 0);
+    Object.keys(by).forEach(id => { if (!order.includes(id) && by[id] > 0) order.push(id); });
+    const payLine = filter === 'all' && order.length
+      ? `<div class="mh-pay num">${order.map(id => `<span><i style="background:${payerColor(id)}"></i>${esc(payerName(id))} AED ${fmt2(by[id])}</span>`).join('')}</div>` : '';
+    h += `
+      <div class="mh">
+        <b>${monthLabel(cur, true)}</b>
+        <span class="num">AED ${fmt2(tot)} &middot; ${buf.length} fill${buf.length > 1 ? 's' : ''}</span>
+        ${payLine}
+      </div>
+      <div class="list">${buf.map(fillRow).join('')}</div>
+    `;
+  };
+  rows.forEach(r => {
+    const k = r.d.slice(0, 7);
+    if (k !== cur) { flush(); cur = k; buf = []; }
+    buf.push(r);
+  });
+  flush();
+  return h;
+}
+
+function viewMoney() {
+  const c = C; const car = c.car;
+  let h = '<h1 class="page-title" style="margin-bottom:12px">Money & Reimbursement</h1>';
+  const coN = payerName(c.coId);
+  h += `
+    <div class="pending">
+      <p class="muted small">Pending from ${esc(coN)} (${esc(car.name)})</p>
+      <div class="big num"><span class="cur">AED</span> ${fmt2(c.balance)}</div>
+      <p class="muted small num">${esc(coN)} Fuel ${fmt2(c.comp)} &minus; Received ${fmt2(c.received)}</p>
+      <button class="btn" data-act="add-pay" data-co="${esc(c.coId)}">Record payment</button>
+    </div>
+    <div style="margin-top:6px">${prevCompaniesHTML(c)}</div>
+  `;
+
+  h += '<section class="sec"><h2>Payments Received</h2>';
+  if (!car.payments || !car.payments.length) {
+    h += '<div class="panel empty">No payments recorded yet.</div>';
+  } else {
+    const sorted = car.payments.slice().sort((a, b) => a.d < b.d ? 1 : (a.d > b.d ? -1 : 0));
+    const shown = showAllPay ? sorted : sorted.slice(0, 5);
+    h += `<div class="list">${shown.map(p => `
+      <button class="row" data-act="edit-pay" data-id="${esc(p.i)}">
+        <span class="r1"><b>${fmtDate(p.d)}</b>${companies().length > 1 ? (() => { const pc = payerColor(coOfPay(p)); return `<span class="chip" style="color:${pc};background:color-mix(in srgb,${pc} 14%,var(--surface))">${esc(payerName(coOfPay(p)))}</span>`; })() : ''}<span class="amt">${fmt2(p.a)}</span></span>
+        ${p.n ? `<span class="r2"><span>${esc(p.n)}</span></span>` : ''}
+      </button>
+    `).join('')}</div>`;
+    if (sorted.length > 5) {
+      h += `<div class="actions"><button class="btn ghost small" data-act="toggle-pay">${showAllPay ? 'Show fewer' : 'Show all ' + sorted.length + ' payments'}</button></div>`;
+    }
+  }
+  h += '</section>';
+
+  const keys = Object.keys(c.months).sort().reverse();
+  h += '<section class="sec"><h2>Fuel Spend by Month</h2>';
+  if (!keys.length) {
+    h += '<div class="panel empty">Add a fill-up to view monthly fuel spend.</div>';
+  } else {
+    const cols = payersFor(c.byPayer), nc = cols.length + 1;
+    const gst = `grid-template-columns:minmax(75px,1.1fr) repeat(${nc},1fr);min-width:${Math.max(320, 90 + nc * 74)}px`;
+    h += `
+      <div class="panel tbl">
+        <div class="mrow head" style="${gst}"><span>Month</span>${cols.map(p => `<span style="color:${payerColor(p.id)}">${esc(p.n)}</span>`).join('')}<span>Total</span></div>
+        ${keys.map(k => {
+          const m = c.months[k];
+          return `<div class="mrow" style="${gst}"><span>${monthLabel(k)}</span>${cols.map(p => `<span>${fmt2(m.by[p.id] || 0)}</span>`).join('')}<b>${fmt2(m.t)}</b></div>`;
+        }).join('')}
+        <div class="mrow foot" style="${gst}"><span>All time</span>${cols.map(p => `<span>${fmt2(c.byPayer[p.id] || 0)}</span>`).join('')}<span>${fmt2(c.total)}</span></div>
+      </div>
+    `;
+  }
+  h += '</section>';
+  return h;
+}
+
+function viewService() {
+  const car = getActiveCar();
+  let h = '<h1 class="page-title" style="margin-bottom:12px">Maintenance & Service</h1>';
+  if (!car.service || !car.service.length) {
+    h += '<div class="panel empty">No service reminders for this car yet.</div>';
+  } else {
+    h += `<div class="panel">${car.service.map(it => svcRow(it, true)).join('')}</div>`;
+  }
+  h += `<div class="actions"><button class="btn ghost" data-act="svc-add">${PLUS} Add service reminder</button></div>`;
+  return h;
+}
+
+const CAR_LOGO = `
+<svg viewBox="0 0 96 96" width="68" height="68" aria-hidden="true">
+  <defs>
+    <linearGradient id="carBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--company)"/>
+      <stop offset="1" style="stop-color:var(--company);stop-opacity:.72"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="48" cy="75" rx="34" ry="3.2" fill="#000" opacity=".18"/>
+  <path d="M24 47 L32.5 32.5 Q34.3 30 37.4 30 H59 Q62.1 30 63.9 32.5 L72 47 Z" fill="url(#carBody)"/>
+  <path d="M30.5 45 L36.2 35 Q36.9 34 38.2 34 H46 V45 Z" fill="var(--surface)" opacity=".92"/>
+  <path d="M50 34 H58.4 Q59.8 34 60.6 35.1 L66.2 45 H50 Z" fill="var(--surface)" opacity=".92"/>
+  <rect x="11" y="45" width="74" height="18" rx="7" fill="url(#carBody)"/>
+  <rect x="17" y="49" width="62" height="2" rx="1" fill="#fff" opacity=".28"/>
+  <rect x="80" y="50" width="5" height="5" rx="2" fill="#F7C948"/>
+  <rect x="11" y="50" width="4" height="5" rx="2" fill="#E5484D"/>
+  <circle cx="31" cy="64" r="9" fill="var(--ink)"/><circle cx="31" cy="64" r="3.8" fill="var(--surface)"/>
+  <circle cx="65" cy="64" r="9" fill="var(--ink)"/><circle cx="65" cy="64" r="3.8" fill="var(--surface)"/>
+</svg>`;
+
+function viewNoCar() {
+  const st = syncState(), cid = syncClientId();
+  const bs = 'width:100%;max-width:260px;margin-top:0';
+  let third;
+  if (!cid) third = `<div style="width:100%;text-align:left">${syncCardHTML()}</div>`;
+  else if (st.enabled) third = `<button class="btn" data-act="sync-now" style="${bs}">${Sync.busy ? 'Syncing…' : 'Sync now'}</button>`;
+  else third = `<button class="btn" data-act="sync-signin" style="${bs}"><svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.35 12.27c0-.72-.06-1.42-.18-2.09H12v3.95h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.25z"/><path fill="#34A853" d="M12 21.75c2.63 0 4.84-.87 6.45-2.35l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.29v2.53A9.75 9.75 0 0 0 12 21.75z"/><path fill="#FBBC05" d="M6.54 13.84A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.84V7.63H3.29A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.04 4.37l3.25-2.53z"/><path fill="#EA4335" d="M12 6.13c1.43 0 2.72.49 3.73 1.45l2.8-2.8C16.84 3.14 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.71 5.38l3.25 2.53C7.31 7.85 9.46 6.13 12 6.13z"/></svg>Sign in with Google</button>`;
+  return `
+    <section class="panel empty" style="margin-top:10px;padding:34px 16px">
+      <div style="width:96px;height:96px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--company) 14%,transparent)">${CAR_LOGO}</div>
+      <h2 style="margin-bottom:8px">No car added yet</h2>
+      <p class="muted">Add your car for history</p>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:20px">
+        ${third}
+        <button class="btn ghost" data-act="upload-json" style="${bs}">Restore Backup</button>
+        <button class="btn ghost" data-act="add-car-prompt" style="${bs}">${PLUS} Add New Car</button>
+        ${cid && Sync.msg ? `<p class="small" style="margin-top:4px;color:var(--late)">${esc(Sync.msg)}</p>` : ''}
+      </div>
+    </section>
+  `;
+}
+
+function render() {
+  const v = $('#view');
+  if (!ready) { v.innerHTML = '<p class="loading">Loading car log&hellip;</p>'; return; }
+
+  const car = getActiveCar();
+  if (!car) {
+    C = null;
+    $('#active-car-name').textContent = 'Select Car';
+    $('#active-car-plate').textContent = '';
+    v.innerHTML = viewNoCar();
+    document.querySelectorAll('.tabs button').forEach(b => b.removeAttribute('aria-current'));
+    $('#fab').hidden = true;
+    animateOdo = false;
+    return;
+  }
+
+  compute();
+  $('#active-car-name').textContent = C.car.name;
+  $('#active-car-plate').textContent = C.car.plate ? ('· ' + C.car.plate) : '';
+  v.innerHTML = tab === 'home' ? viewHome() : tab === 'fuel' ? viewFuel() : tab === 'money' ? viewMoney() : tab === 'service' ? viewService() : viewData();
+  document.querySelectorAll('.tabs button').forEach(b => {
+    if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  $('#fab').hidden = !(tab === 'fuel' && C.D.length > 0);
+  animateOdo = false;
+}
+
+/* ---------- FILL-UP SHEET LOGIC ---------- */
+function readFill() {
+  const by = sheet.querySelector('input[name=f-by]:checked');
+  return {
+    d: $('#f-date', sheet).value,
+    rental: $('#f-rental', sheet).checked,
+    k: parseNum($('#f-km', sheet).value),
+    a: parseNum($('#f-amt', sheet).value),
+    r: parseNum($('#f-rate', sheet).value),
+    b: by ? by.value : 'C'
+  };
+}
+
+function checkFill(f, id) {
+  const car = getActiveCar();
+  const key = id || '__new';
+  const cand = { i: key, d: f.d || today(), k: f.rental ? null : (f.k || 0), a: f.a > 0 ? f.a : 0, r: f.r > 0 ? f.r : 0, b: f.b };
+  const der = derive((car.fills || []).filter(x => x.i !== id).concat([cand]));
+  const idx = der.findIndex(x => x.i === key), me = der[idx];
+  let err = null, kind = 'missing', text = '';
+  if (f.a > 0 && f.r > 0) {
+    text = (me.litres || 0).toFixed(1) + ' L';
+    if (f.rental) text += ' \u00b7 rental car';
+    else if (me.run > 0) { text += ' \u00b7 ' + fmt0(me.run) + ' km run' + (me.avg != null ? ' \u00b7 ' + fmt2(me.avg) + ' km/L' : ''); }
+  }
+  if (!f.rental && f.k > 0) {
+    if (me.run != null && me.run <= 0) { err = 'Odometer must be higher than previous fill (' + fmt0(me.pk) + ' km).'; kind = 'order'; }
+    else {
+      const nx = der.slice(idx + 1).find(x => !x.rental);
+      if (nx && nx.run != null && nx.run <= 0) { err = 'Odometer must be lower than next fill (' + fmt0(nx.k) + ' km).'; kind = 'order'; }
+    }
+  }
+  if (!err) {
+    if (!f.d) err = 'Please choose a date.';
+    else if (!(f.a > 0)) err = 'Please enter amount paid.';
+    else if (!(f.r > 0)) err = 'Please enter rate per litre.';
+    else if (!f.rental && !(f.k > 0)) err = 'Please enter odometer reading.';
+  }
+  return { err, kind, text };
+}
+
+function fillPreview() {
+  const f = readFill();
+  $('#f-km-wrap', sheet).hidden = f.rental;
+  const res = checkFill(f, sheet.dataset.id || null), el = $('#f-preview', sheet);
+  if (res.kind === 'order' && res.err) { el.className = 'preview err'; el.textContent = res.err; }
+  else { el.className = 'preview'; el.textContent = res.text; }
+}
+
+function payerRadios(selected) {
+  const cos = companies(), act = activeCoId();
+  const actCo = cos.find(x => x.id === act) || cos[0];
+  const list = [actCo, { id: 'S', n: 'Self' }];
+  customPayers().filter(p => !p.co).forEach(p => list.push(p));
+  cos.filter(x => x.id !== actCo.id).forEach(x => list.push({ id: x.id, n: x.n + ' (old)' }));
+  if (!list.some(p => p.id === selected)) list.push({ id: selected, n: payerName(selected) });
+  return list.map(p => `<label><input type="radio" name="f-by" value="${esc(p.id)}" ${p.id === selected ? 'checked' : ''}><span>${esc(p.n)}</span></label>`).join('');
+}
+
+function fillSheet(id) {
+  const car = getActiveCar();
+  const ex = id ? (car.fills || []).find(f => f.i === id) : null;
+  const lastRow = C && C.lastReal, anyRow = (car.fills || []).length ? sortFills(car.fills).slice(-1)[0] : null;
+  const v = ex || { d: today(), k: null, a: null, r: anyRow ? anyRow.r : 2.57, b: activeCoId() };
+  const rental = !!ex && ex.k == null;
+  openSheet('fill', id, ex ? 'Edit fill-up' : 'Add fill-up', `
+    <div class="field"><label for="f-date">Date</label><input id="f-date" type="date" value="${esc(v.d)}"></div>
+    <label class="check"><input type="checkbox" id="f-rental" ${rental ? 'checked' : ''}> Rental car (No odometer)</label>
+    <div class="field" id="f-km-wrap"><label for="f-km">Odometer (km)</label><input id="f-km" type="text" inputmode="numeric" placeholder="${lastRow ? 'Last: ' + fmt0(lastRow.k) : ''}" value="${v.k == null ? '' : esc(v.k)}"></div>
+    <div class="two">
+      <div class="field"><label for="f-amt">Amount (AED)</label><input id="f-amt" type="text" inputmode="decimal" value="${v.a == null ? '' : esc(v.a)}"></div>
+      <div class="field"><label for="f-rate">Rate/Litre</label><input id="f-rate" type="text" inputmode="decimal" value="${v.r == null ? '' : esc(v.r)}"></div>
+    </div>
+    <fieldset class="field"><legend>Paid by</legend>
+      <div class="seg2" id="f-by-group">${payerRadios(v.b)}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
+        <button type="button" class="btn-link" data-act="payer-new-toggle">+ Add new payer</button>
+        ${customPayers().length ? '<button type="button" class="btn-link" data-act="payer-remove-toggle">&minus; Remove unused payer</button>' : ''}
+      </div>
+      <div id="f-payer-manage" hidden style="margin-top:8px"></div>
+      <div class="payer-add" id="f-payer-add" hidden>
+        <input id="f-payer-name" type="text" maxlength="20" placeholder="e.g. Friend, Wife, Office" autocomplete="off">
+        <button type="button" class="btn small" data-act="payer-new-save">Add</button>
+      </div>
+      <p id="f-payer-msg" class="small" style="color:var(--late);margin-top:6px" hidden></p>
+    </fieldset>
+    <p id="f-preview" class="preview" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn" data-act="save-fill">Save</button>
+      ${ex ? '<button class="btn danger" data-act="del-fill">Delete</button>' : ''}
+    </div>
+  `);
+  fillPreview();
+}
+
+function saveFill() {
+  const id = sheet.dataset.id || null, f = readFill(), res = checkFill(f, id);
+  if (res.err) { const el = $('#f-preview', sheet); el.className = 'preview err'; el.textContent = res.err; return; }
+  const car = getActiveCar();
+  const row = { i: id || ('f' + uid()), d: f.d, k: f.rental ? null : Math.round(f.k), a: r2(f.a), r: f.r, b: f.b };
+  car.fills = sortFills(id ? car.fills.map(x => x.i === id ? row : x) : car.fills.concat([row]));
+  persistAll(); closeSheet(); render(); toast(id ? 'Fill-up updated successfully' : 'Fill-up saved successfully');
+}
+
+/* ---------- PAYMENT SHEET LOGIC ---------- */
+function paySheet(id, coPref) {
+  const car = getActiveCar();
+  const ex = id ? (car.payments || []).find(p => p.i === id) : null;
+  const v = ex || { d: today(), a: null, n: '', c: coPref || activeCoId() };
+  const cos = companies(), selCo = coOfPay(v);
+  const coField = cos.length > 1 ? `<fieldset class="field"><legend>Received from</legend><div class="seg2">${cos.map(co => `<label><input type="radio" name="p-co" value="${esc(co.id)}" ${co.id === selCo ? 'checked' : ''}><span>${esc(co.n)}</span></label>`).join('')}</div></fieldset>` : '';
+  openSheet('pay', id, ex ? 'Edit payment' : 'Record payment', `
+    ${coField}
+    <div class="field"><label for="p-date">Date received</label><input id="p-date" type="date" value="${esc(v.d)}"></div>
+    <div class="field"><label for="p-amt">Amount (AED)</label><input id="p-amt" type="text" inputmode="decimal" value="${v.a == null ? '' : esc(v.a)}"></div>
+    <div class="field"><label for="p-note">Note / Ref (optional)</label><input id="p-note" type="text" maxlength="80" value="${esc(v.n || '')}"></div>
+    <p id="p-msg" class="preview" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn" data-act="save-pay">Save</button>
+      ${ex ? '<button class="btn danger" data-act="del-pay">Delete</button>' : ''}
+    </div>
+  `);
+  if (!ex) $('#p-amt', sheet).focus();
+}
+
+function savePay() {
+  const id = sheet.dataset.id || null, d = $('#p-date', sheet).value, a = parseNum($('#p-amt', sheet).value), n = $('#p-note', sheet).value.trim();
+  const msg = $('#p-msg', sheet);
+  if (!d) { msg.className = 'preview err'; msg.textContent = 'Please choose a date.'; return; }
+  if (!(a > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter amount received.'; return; }
+  const car = getActiveCar();
+  const coSel = sheet.querySelector('input[name=p-co]:checked');
+  const row = { i: id || ('p' + uid()), d, a: r2(a), n, c: coSel ? coSel.value : activeCoId() };
+  car.payments = id ? car.payments.map(x => x.i === id ? row : x) : (car.payments || []).concat([row]);
+  persistAll(); closeSheet(); render(); toast(id ? 'Payment updated successfully' : 'Payment recorded successfully');
+}
+
+/* ---------- SERVICE SHEETS ---------- */
+function svcById(id) {
+  const car = getActiveCar();
+  return (car.service || []).find(x => x.i === id);
+}
+
+function svcDoneSheet(id) {
+  const it = svcById(id); if (!it) return; const c = svcCalc(it);
+  openSheet('svc-done', id, it.n + ' Done', `
+    <div class="field"><label for="s-km">Odometer at service (km)</label><input id="s-km" type="text" inputmode="numeric" value="${C.odo == null ? '' : esc(C.odo)}"></div>
+    <div class="field"><label for="s-int">Next due after (km interval)</label><input id="s-int" type="text" inputmode="numeric" value="${esc(c ? c.last.i : 5000)}"></div>
+    <p id="s-msg" class="preview" aria-live="polite"></p>
+    <div class="actions"><button class="btn" data-act="save-svc-done">Save</button></div>
+  `);
+}
+
+function saveSvcDone() {
+  const id = sheet.dataset.id, it = svcById(id), km = parseNum($('#s-km', sheet).value), iv = parseNum($('#s-int', sheet).value), msg = $('#s-msg', sheet);
+  const c = svcCalc(it);
+  if (!(km > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter odometer reading.'; return; }
+  if (!(iv > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter service interval in km.'; return; }
+  if (c && km <= c.last.k) { msg.className = 'preview err'; msg.textContent = 'Odometer must be higher than last service (' + fmt0(c.last.k) + ' km).'; return; }
+  const car = getActiveCar();
+  car.service = car.service.map(x => x.i === id ? Object.assign({}, x, { h: x.h.concat([{ k: Math.round(km), i: Math.round(iv) }]) }) : x);
+  persistAll(); closeSheet(); render(); toast(it.n + ' marked as completed');
+}
+
+function svcEditSheet(id) {
+  const it = svcById(id); if (!it) return; const c = svcCalc(it);
+  openSheet('svc-edit', id, 'Edit ' + it.n, `
+    <div class="field"><label for="e-name">Service Name</label><input id="e-name" type="text" maxlength="40" value="${esc(it.n)}"></div>
+    <div class="field"><label for="e-int">Interval for next service (km)</label><input id="e-int" type="text" inputmode="numeric" value="${esc(c ? c.last.i : 5000)}"></div>
+    <p id="e-msg" class="preview" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn" data-act="save-svc-edit">Save</button>
+      ${it.h.length > 1 ? '<button class="btn ghost" data-act="svc-undo">Undo last service</button>' : ''}
+      <button class="btn danger" data-act="svc-del">Delete reminder</button>
+    </div>
+  `);
+}
+
+function saveSvcEdit() {
+  const id = sheet.dataset.id, name = $('#e-name', sheet).value.trim(), iv = parseNum($('#e-int', sheet).value), msg = $('#e-msg', sheet);
+  if (!name) { msg.className = 'preview err'; msg.textContent = 'Please enter a name.'; return; }
+  if (!(iv > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the interval in km.'; return; }
+  const car = getActiveCar();
+  car.service = car.service.map(x => {
+    if (x.i !== id) return x;
+    const h = x.h.slice().sort((a, b) => a.k - b.k);
+    const l = h.length - 1;
+    h[l] = { k: h[l].k, i: Math.round(iv) };
+    return Object.assign({}, x, { n: name, h });
+  });
+  persistAll(); closeSheet(); render(); toast('Reminder updated');
+}
+
+function svcAddSheet() {
+  openSheet('svc-add', '', 'Add Service Reminder', `
+    <div class="field"><label for="a-name">Service Type</label><input id="a-name" type="text" placeholder="e.g. Brake pads, Battery, Transmission"></div>
+    <div class="two">
+      <div class="field"><label for="a-int">Every (km interval)</label><input id="a-int" type="text" inputmode="numeric" placeholder="e.g. 10000"></div>
+      <div class="field"><label for="a-km">Last done at (km)</label><input id="a-km" type="text" inputmode="numeric" value="${C && C.odo != null ? esc(C.odo) : ''}"></div>
+    </div>
+    <p id="a-msg" class="preview" aria-live="polite"></p>
+    <div class="actions"><button class="btn" data-act="save-svc-add">Add Reminder</button></div>
+  `);
+  $('#a-name', sheet).focus();
+}
+
+function saveSvcAdd() {
+  const name = $('#a-name', sheet).value.trim(), iv = parseNum($('#a-int', sheet).value), km = parseNum($('#a-km', sheet).value), msg = $('#a-msg', sheet);
+  if (!name) { msg.className = 'preview err'; msg.textContent = 'Please enter a service name.'; return; }
+  if (!(iv > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the interval in km.'; return; }
+  if (!(km >= 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the odometer reading for last service.'; return; }
+  const car = getActiveCar();
+  car.service = (car.service || []).concat([{ i: 's' + uid(), n: name, h: [{ k: Math.round(km), i: Math.round(iv) }] }]);
+  persistAll(); closeSheet(); render(); toast('Service reminder added');
+}
+
+/* ---------- EVENT DELEGATION ---------- */
+const H = {
+  tab: el => { tab = el.dataset.tab; render(); window.scrollTo(0, 0); },
+  filter: el => { filter = el.dataset.f; render(); },
+  'toggle-pay': () => { showAllPay = !showAllPay; render(); },
+  'set-theme': el => setTheme(el.dataset.theme),
+
+  // Custom payers
+  'payer-new-toggle': () => {
+    const box = $('#f-payer-add', sheet); if (!box) return;
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('#f-payer-name', sheet).focus();
+  },
+  'payer-new-save': () => {
+    const inp = $('#f-payer-name', sheet), msg = $('#f-payer-msg', sheet);
+    if (!inp) return;
+    const r = addPayer(inp.value);
+    if (r.err) { msg.textContent = r.err; msg.hidden = false; return; }
+    msg.hidden = true; inp.value = '';
+    $('#f-by-group', sheet).innerHTML = payerRadios(r.id);
+    $('#f-payer-add', sheet).hidden = true;
+    const mb = $('#f-payer-manage', sheet); if (mb && !mb.hidden) mb.innerHTML = payerManageHTML();
+    if (!sheet.querySelector('[data-act="payer-remove-toggle"]')) { const a = sheet.querySelector('[data-act="payer-new-toggle"]'); if (a) a.insertAdjacentHTML('afterend', '<button type="button" class="btn-link" data-act="payer-remove-toggle">&minus; Remove unused payer</button>'); }
+    fillPreview();
+  },
+  'payer-remove-toggle': () => {
+    const box = $('#f-payer-manage', sheet); if (!box) return;
+    box.hidden = !box.hidden;
+    if (!box.hidden) box.innerHTML = payerManageHTML();
+  },
+  'payer-remove-one': el => {
+    const id = el.dataset.id;
+    if (payerUsage(id) > 0) { toast('Cannot remove: payer is used in a fill-up.'); return; }
+    const cur = sheet.querySelector('input[name=f-by]:checked');
+    const keep = cur && cur.value !== id ? cur.value : activeCoId();
+    if (S.cfg.activeCompany === id) S.cfg.activeCompany = 'C';
+    S.cfg.payers = customPayers().filter(x => x.id !== id);
+    if (filter === id) filter = 'all';
+    persistAll();
+    $('#f-by-group', sheet).innerHTML = payerRadios(keep);
+    const box = $('#f-payer-manage', sheet);
+    if (customPayers().length) box.innerHTML = payerManageHTML();
+    else { box.hidden = true; const t = sheet.querySelector('[data-act="payer-remove-toggle"]'); if (t) t.remove(); }
+    fillPreview();
+    toast('Payer removed');
+  },
+  'company-new': () => {
+    const nv = prompt('New company name. Pending / Received tracking will start fresh for it.');
+    if (nv == null) return;
+    const name = nv.replace(/\s+/g, ' ').trim();
+    if (!name || name.length > 20) { toast('Name must be 1-20 characters.'); return; }
+    const ex = allPayers().find(x => x.n.toLowerCase() === name.toLowerCase());
+    const prevName = payerName(activeCoId());
+    if (ex) {
+      if (!companies().some(x => x.id === ex.id)) { toast('That name is already used by another payer.'); return; }
+      S.cfg.activeCompany = ex.id;
+    } else {
+      const np = { id: 'p' + uid(), n: name, co: true };
+      S.cfg.payers = customPayers().concat([np]);
+      S.cfg.activeCompany = np.id;
+    }
+    persistAll(); render();
+    toast(name + ' is now active. ' + prevName + ' stopped; its balance is saved.');
+  },
+  'company-activate': el => {
+    const id = el.dataset.id;
+    if (!companies().some(x => x.id === id)) return;
+    S.cfg.activeCompany = id; persistAll(); render();
+    toast(payerName(id) + ' is now the active company.');
+  },
+  'payer-rename': el => {
+    const id = el.dataset.id;
+    const p = id === 'C' ? { id: 'C', n: coName() } : customPayers().find(x => x.id === id);
+    if (!p) return;
+    const nv = prompt(id === 'C' ? 'Rename company / reimbursement payer' : 'Rename payer', p.n);
+    if (nv == null) return;
+    const name = nv.replace(/\s+/g, ' ').trim();
+    if (!name || name.length > 20) { toast('Name must be 1-20 characters.'); return; }
+    if (allPayers().some(x => x.id !== p.id && x.n.toLowerCase() === name.toLowerCase())) { toast('That name is already in use.'); return; }
+    if (id === 'C') S.cfg.companyName = name; else p.n = name;
+    persistAll(); render(); toast('Payer renamed');
+  },
+  'payer-del': el => {
+    const id = el.dataset.id;
+    const n = payerUsage(id);
+    if (n > 0) { toast('Cannot delete: it is used in fill-ups or payments.'); return; }
+    confirmTap(el, 'Tap again to Delete', () => {
+      if (S.cfg.activeCompany === id) S.cfg.activeCompany = 'C';
+      S.cfg.payers = customPayers().filter(x => x.id !== id);
+      if (filter === id) filter = 'all';
+      persistAll(); render(); toast('Payer deleted');
+    });
+  },
+  close: () => closeSheet(),
+
+  // Car Management
+  'open-car-modal': () => {
+    tab = 'data';
+    render();
+    setTimeout(() => {
+      const el = document.getElementById('car-selection-sec');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+  },
+  'switch-car': el => {
+    const id = el.dataset.id;
+    if (id && id !== S.activeCarId) {
+      S.activeCarId = id;
+      persistAll();
+      closeSheet();
+      render();
+      toast('Switched active car to: ' + getActiveCar().name);
+    }
+  },
+  'add-car-prompt': () => addCarSheet(),
+  'save-new-car': () => saveNewCar(),
+  'edit-car': el => editCarSheet(el.dataset.id),
+  'save-edit-car': () => saveEditCar(),
+  'del-car': el => {
+    const id = el.dataset.id;
+    if (S.cars.length <= 1) { toast('You must have at least one car.'); return; }
+    const carToDelete = S.cars.find(x => x.id === id);
+    confirmTap(el, 'Confirm Delete', () => {
+      S.cars = S.cars.filter(x => x.id !== id);
+      if (S.activeCarId === id) S.activeCarId = S.cars[0].id;
+      persistAll();
+      render();
+      toast(`${carToDelete ? carToDelete.name : 'Car'} deleted successfully.`);
+    });
+  },
+  'del-car-from-edit': el => {
+    const id = el.dataset.id;
+    if (S.cars.length <= 1) { toast('You must have at least one car.'); return; }
+    const carToDelete = S.cars.find(x => x.id === id);
+    confirmTap(el, 'Confirm Delete', () => {
+      S.cars = S.cars.filter(x => x.id !== id);
+      if (S.activeCarId === id) S.activeCarId = S.cars[0].id;
+      persistAll();
+      closeSheet();
+      render();
+      toast(`${carToDelete ? carToDelete.name : 'Car'} deleted successfully.`);
+    });
+  },
+
+  // Fill actions
+  'add-payer': () => {
+    const nv = prompt('New payer name');
+    if (nv == null) return;
+    const before = customPayers().length;
+    const r = addPayer(nv);
+    if (r.err) { toast(r.err); return; }
+    render();
+    toast(customPayers().length === before ? 'That payer already exists.' : 'Payer added.');
+  },
+  'add-fill': () => fillSheet(null),
+  'edit-fill': el => fillSheet(el.dataset.id),
+  'save-fill': () => saveFill(),
+  'del-fill': el => confirmTap(el, 'Tap again to delete', () => {
+    const id = sheet.dataset.id;
+    const car = getActiveCar();
+    car.fills = car.fills.filter(x => x.i !== id);
+    persistAll(); closeSheet(); render(); toast('Fill-up deleted');
+  }),
+
+  // Payment actions
+  'add-pay': el => paySheet(null, el && el.dataset ? el.dataset.co : null),
+  'edit-pay': el => paySheet(el.dataset.id),
+  'save-pay': () => savePay(),
+  'del-pay': el => confirmTap(el, 'Tap again to delete', () => {
+    const id = sheet.dataset.id;
+    const car = getActiveCar();
+    car.payments = car.payments.filter(x => x.i !== id);
+    persistAll(); closeSheet(); render(); toast('Payment deleted');
+  }),
+
+  // Service actions
+  'svc-done': el => svcDoneSheet(el.dataset.id),
+  'save-svc-done': () => saveSvcDone(),
+  'svc-edit': el => svcEditSheet(el.dataset.id),
+  'save-svc-edit': () => saveSvcEdit(),
+  'svc-undo': el => confirmTap(el, 'Tap again to undo', () => {
+    const id = sheet.dataset.id;
+    const car = getActiveCar();
+    car.service = car.service.map(x => x.i === id ? Object.assign({}, x, { h: x.h.slice().sort((a, b) => a.k - b.k).slice(0, -1) }) : x);
+    persistAll(); closeSheet(); render(); toast('Last service record removed');
+  }),
+  'svc-del': el => confirmTap(el, 'Tap again to delete', () => {
+    const id = sheet.dataset.id;
+    const car = getActiveCar();
+    car.service = car.service.filter(x => x.i !== id);
+    persistAll(); closeSheet(); render(); toast('Service reminder deleted');
+  }),
+  'svc-add': () => svcAddSheet(),
+  'save-svc-add': () => saveSvcAdd(),
+
+  // Dedicated Data Switches
+  'export-excel': () => exportToExcel(),
+  'import-excel': () => $('#excel-file-input').click(),
+
+  'download-json': () => downloadJsonBackup(),
+  'upload-json': () => $('#json-restore-input').click(),
+  'open-pdf-range-modal': () => openPdfRangeModal(),
+  'confirm-pdf-range': () => confirmPdfRange(),
+  'trigger-print': () => window.print(),
+  'sync-save-cid': () => {
+    const v = ($('#sync-cid') || {}).value; const id = (v || '').trim();
+    if (!/^[\w-]+(\.[\w-]+)*\.apps\.googleusercontent\.com$/.test(id)) { toast('That does not look like a valid Google Client ID.'); return; }
+    try { localStorage.setItem('carlog.sync.cid', id); } catch (e) {}
+    render(); toast('Client ID saved. Now tap Sign in with Google.');
+  },
+  'sync-signin': () => { syncSignIn(); },
+  'sync-now': () => { syncNow(true); },
+  'sync-signout': el => confirmTap(el, 'Tap again to sign out', () => {
+    clearTimeout(Sync.timer); Sync.token = null; Sync.exp = 0; Sync.msg = '';
+    try { localStorage.removeItem('carlog.sync'); } catch (e) {}
+    render(); toast('Signed out. Data on this device and in Google Drive is unchanged.');
+  }),
+  'open-reset-modal': () => openResetModal(),
+  'reset-active-car': el => {
+    const car = getActiveCar();
+    confirmTap(el, 'Tap again to Confirm Reset', () => {
+      car.fills = [];
+      car.payments = [];
+      (car.service || []).forEach(s => {
+        s.h = [{ k: car.odometer || 0, i: (s.i === 'tyre' ? 10000 : 5000) }];
+      });
+      persistAll();
+      closeSheet();
+      render();
+      toast(`Active car (${car.name}) records reset successfully.`);
+    });
+  },
+  'factory-reset': el => {
+    confirmTap(el, 'Tap again to Confirm Factory Reset', () => {
+      S.cars = [];
+      S.activeCarId = null;
+      S.cfg.payers = [];
+      S.cfg.companyName = 'Company';
+      S.cfg.activeCompany = 'C';
+      S.meta.lastBackup = null;
+      clearTimeout(Sync.timer); Sync.token = null; Sync.exp = 0; Sync.msg = '';
+      try { localStorage.removeItem('carlog.sync'); } catch (e) {}
+      persistAll();
+      closeSheet();
+      render();
+      toast('All data reset on this device. Google Drive copy (if any) was not touched.');
+    });
+  }
+};
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (b && H[b.dataset.act]) H[b.dataset.act](b, e);
+});
+
+$('#excel-file-input').addEventListener('change', importFromExcel);
+$('#json-restore-input').addEventListener('change', restoreFromJson);
+
+sheet.addEventListener('input', e => {
+  if (sheet.dataset.kind === 'fill') fillPreview();
+});
+sheet.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target && e.target.id === 'f-payer-name') { e.preventDefault(); H['payer-new-save'](); }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && syncEnabled() && tokenValid()) syncNow(false);
+});
+if (syncEnabled()) {
+  document.addEventListener('click', () => { if (syncEnabled() && !tokenValid()) syncNow(true); }, { once: true, capture: true });
+}
+
+initApp();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', {scope: './'}).catch(function (err) {
+      console.warn('CarLog service worker registration failed:', err);
+    });
+  });
+}
+</script>
+
+</body>
+</html>
