@@ -193,6 +193,16 @@ dialog#sheet::backdrop{background:rgba(6,14,20,.6)}
 .seg2 input:checked+span{border-color:var(--ink);background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--ink)}
 .preview{min-height:20px;font-size:13.5px;color:var(--ink-2);margin:4px 0}
 .preview.err{color:var(--late);font-weight:600}
+.scanrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.scanrow .btn{width:auto;min-height:34px;padding:0 12px;margin:0;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.scanrow .btn svg{width:16px;height:16px}
+.scanout:empty{display:none}
+.scanout{margin-top:8px;color:var(--ink-2);line-height:1.45}
+.scanout .err{color:var(--late);font-weight:600}
+.scanwrap{display:flex;align-items:center;gap:10px}
+.scan-thumb{height:56px;border-radius:8px;border:1px solid var(--line);flex:none}
+.scan-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.scan-chip{min-height:32px;padding:0 12px;border-radius:16px;border:1.5px solid var(--line);background:var(--surface-2);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer}
 .toast{position:fixed;left:50%;bottom:calc(82px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;max-width:calc(100% - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .loading{padding:40px 0;text-align:center;color:var(--ink-2)}
@@ -2066,11 +2076,12 @@ function fillSheet(id) {
   openSheet('fill', id, ex ? 'Edit fill-up' : 'Add fill-up', `
     <div class="field"><label for="f-date">Date</label><input id="f-date" type="date" value="${esc(v.d)}"></div>
     <label class="check"><input type="checkbox" id="f-rental" ${rental ? 'checked' : ''}> Rental car (No odometer)</label>
-    <div class="field" id="f-km-wrap"><label for="f-km">Odometer (km)</label><input id="f-km" type="text" inputmode="numeric" placeholder="${lastRow ? 'Last: ' + fmt0(lastRow.k) : ''}" value="${v.k == null ? '' : esc(v.k)}"></div>
+    <div class="field" id="f-km-wrap"><label for="f-km">Odometer (km)</label><input id="f-km" type="text" inputmode="numeric" placeholder="${lastRow ? 'Last: ' + fmt0(lastRow.k) : ''}" value="${v.k == null ? '' : esc(v.k)}">${scanRow('odo', 'Scan odometer')}</div>
     <div class="two">
       <div class="field"><label for="f-amt">Amount (AED)</label><input id="f-amt" type="text" inputmode="decimal" value="${v.a == null ? '' : esc(v.a)}"></div>
       <div class="field"><label for="f-rate">Rate/Litre</label><input id="f-rate" type="text" inputmode="decimal" value="${v.r == null ? '' : esc(v.r)}"></div>
     </div>
+    <div style="margin:-6px 0 14px">${scanRow('bill', 'Scan bill')}</div>
     <fieldset class="field"><legend>Paid by</legend>
       <div class="seg2" id="f-by-group">${payerRadios(v.b)}</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
@@ -2100,6 +2111,287 @@ function saveFill() {
   const row = { i: id || ('f' + uid()), d: f.d, k: f.rental ? null : Math.round(f.k), a: r2(f.a), r: f.r, b: f.b };
   car.fills = sortFills(id ? car.fills.map(x => x.i === id ? row : x) : car.fills.concat([row]));
   persistAll(); closeSheet(); render(); toast(id ? 'Fill-up updated successfully' : 'Fill-up saved successfully');
+}
+
+/* ---------- OCR CORE (pure functions: no DOM) ---------- */
+function ocrToGray(rgba, n) {
+  const g = new Uint8Array(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) g[i] = (rgba[j] * 299 + rgba[j + 1] * 587 + rgba[j + 2] * 114) / 1000 | 0;
+  return g;
+}
+function ocrStretch(g) {                       // contrast stretch between 2nd and 98th percentile
+  const h = new Uint32Array(256); for (let i = 0; i < g.length; i++) h[g[i]]++;
+  const lo_t = g.length * 0.02, hi_t = g.length * 0.98; let c = 0, lo = 0, hi = 255;
+  for (let v = 0; v < 256; v++) { c += h[v]; if (c >= lo_t) { lo = v; break; } }
+  c = 0; for (let v = 0; v < 256; v++) { c += h[v]; if (c >= hi_t) { hi = v; break; } }
+  if (hi - lo < 20) { lo = Math.max(0, lo - 10); hi = Math.min(255, hi + 10); }
+  const out = new Uint8Array(g.length), k = 255 / (hi - lo || 1);
+  for (let i = 0; i < g.length; i++) { const v = (g[i] - lo) * k; out[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  return out;
+}
+function ocrMean(g) { let s = 0; for (let i = 0; i < g.length; i++) s += g[i]; return s / g.length; }
+function ocrInvert(g) { const o = new Uint8Array(g.length); for (let i = 0; i < g.length; i++) o[i] = 255 - g[i]; return o; }
+function ocrBox(g, w, h, r) {                  // fast box blur (integral image) -> local mean
+  const W = w + 1, I = new Float64Array(W * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + row; } }
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+      out[y * w + x] = (I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]) / ((x1 - x0) * (y1 - y0));
+    }
+  }
+  return out;
+}
+function ocrAdaptive(g, w, h, bias) {          // dark text on white; pixel is "ink" when well below local mean
+  const m = ocrBox(g, w, h, Math.max(15, Math.round(Math.min(w, h) / 12)));
+  const o = new Uint8Array(g.length);
+  for (let i = 0; i < g.length; i++) o[i] = g[i] < m[i] - bias ? 0 : 255;
+  return o;
+}
+function ocrDilateInk(b, w, h, r) {            // grow black ink by r px (bridges seven-segment gaps)
+  const o = new Uint8Array(b.length).fill(255);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (b[y * w + x] !== 0) continue;
+    for (let dy = -r; dy <= r; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue;
+      for (let dx = -r; dx <= r; dx++) { const xx = x + dx; if (xx < 0 || xx >= w) continue; o[yy * w + xx] = 0; } }
+  }
+  return o;
+}
+/* Returns a list of {name, gray} variants (dark text on light background) to feed to the OCR engine */
+function ocrVariants(rgba, w, h, kind) {
+  const g0 = ocrStretch(ocrToGray(rgba, w * h));
+  const dark = ocrMean(g0) < 120;                // light digits on dark background -> invert so text is dark
+  const base = dark ? ocrInvert(g0) : g0;
+  const out = [{ name: 'norm', gray: base }];
+  const bin = ocrAdaptive(base, w, h, kind === 'odo' ? 12 : 10);
+  out.push({ name: 'bin', gray: bin });
+  if (kind === 'odo') out.push({ name: 'bold', gray: ocrDilateInk(bin, w, h, Math.max(1, Math.round(Math.min(w, h) / 260))) });
+  return out;
+}
+
+/* ---------- odometer parsing ---------- */
+function ocrOdoCandidates(texts, lastOdo) {      // texts: array of raw OCR strings (one per variant)
+  const seen = {};
+  const add = (s, w) => {
+    const d = s.replace(/\D/g, '');
+    if (d.length < 4 || d.length > 7) return;
+    if (/^(\d)\1+$/.test(d)) return;
+    seen[d] = (seen[d] || 0) + w;
+  };
+  texts.forEach(t => {
+    (t || '').split(/\n/).forEach(line => {
+      if (/\d+\.\d/.test(line) && !/\d{5,}/.test(line.replace(/\d+\.\d+/g, ''))) return;   // trip meter like 123.4
+      const joined = line.replace(/(\d)[ ,.](?=\d{3}\b)/g, '$1');                          // 287,176 / 287 176
+      (joined.match(/\d{4,7}/g) || []).forEach(m => add(m, 2));
+      (line.match(/\d{4,7}/g) || []).forEach(m => add(m, 1));
+      const runs = line.match(/\d(?:\s?\d){3,6}/g) || [];                                   // digits separated by single spaces
+      runs.forEach(m => add(m, 1));
+    });
+  });
+  let c = Object.keys(seen).map(k => ({ val: parseInt(k, 10), score: seen[k] }));
+  const lo = lastOdo > 0 ? lastOdo : 0;
+  c.forEach(x => {
+    if (lo > 0) {
+      const diff = x.val - lo;
+      if (diff >= 0 && diff <= 3000) x.score += 6;
+      else if (diff >= 0 && diff <= 15000) x.score += 2;
+      else if (diff < 0) x.score -= 3;
+      if (String(x.val).length === String(lo).length) x.score += 1;
+    }
+  });
+  c.forEach(x => { x.ok = lo > 0 ? (x.val >= lo && x.val <= lo + 15000) : String(x.val).length >= 5; });
+  return c.sort((a, b) => (b.ok - a.ok) || (b.score - a.score)).slice(0, 4);
+}
+
+/* ---------- bill parsing ---------- */
+function ocrNums(text) {
+  const out = []; const re = /(^|[^\d.,])(\d{1,4}[.,]\d{1,3})(?!\d)/g; let m;
+  const lines = text.split(/\n/);
+  lines.forEach((line, li) => {
+    re.lastIndex = 0;
+    while ((m = re.exec(line))) { const v = parseFloat(m[2].replace(',', '.')); if (isFinite(v) && v > 0) out.push({ v, line: li, text: line, dec: (m[2].split(/[.,]/)[1] || '').length }); re.lastIndex = m.index + m[0].length - 1; }
+  });
+  return out;
+}
+function ocrParseBill(text) {
+  const t = (text || '').replace(/(\d)[Oo]|[Oo](?=\d)/g, (mm, d) => d ? d + '0' : '0');
+  const nums = ocrNums(t);
+  const KW_A = /(total|amount|net|payable|sale|grand)/i, KW_L = /(vol|litre|liter|ltr|qty|quantity|\bl\b)/i, KW_R = /(rate|price|unit|per\s*l|\/\s*l|aed\s*\/)/i;
+  const kwScore = (n, re) => re.test(n.text) ? 1 : 0;
+  let best = null;
+  const cand = nums.filter(n => n.dec >= 2);
+  for (const a of cand) for (const l of cand) {
+    if (a === l || a.v < 5 || a.v > 2000 || l.v < 1 || l.v > 200) continue;
+    for (const r of cand) {
+      if (r === a || r === l || r.v < 1 || r.v > 15) continue;
+      const calc = l.v * r.v, tol = Math.max(0.12, a.v * 0.008);
+      const err = Math.abs(calc - a.v);
+      if (err > tol) continue;
+      let s = 10 - err * 10 + kwScore(a, KW_A) * 2 + kwScore(l, KW_L) * 2 + kwScore(r, KW_R) * 2;
+      if (a.line !== l.line && a.line !== r.line && l.line !== r.line) s += 0.5;
+      if (r.dec === 2) s += 0.5;
+      if (!best || s > best.s) best = { s, amount: a.v, litres: l.v, rate: r.v, how: 'matched' };
+    }
+  }
+  if (best) return { amount: best.amount, rate: best.rate, litres: best.litres, how: 'matched' };
+  // keyword fallback
+  const pick = (re, lo, hi, dmin) => {
+    const c = nums.filter(n => re.test(n.text) && n.v >= lo && n.v <= hi && n.dec >= dmin);
+    return c.length ? c[c.length - 1].v : null;
+  };
+  let amount = pick(KW_A, 5, 2000, 2), rate = pick(KW_R, 1, 15, 2), litres = pick(KW_L, 1, 200, 2);
+  if (amount && litres && !rate) rate = Math.round(amount / litres * 100) / 100;
+  if (rate && litres && !amount) amount = Math.round(rate * litres * 100) / 100;
+  if (amount || rate) return { amount, rate, litres, how: 'keywords' };
+  return null;
+}
+
+/* ---------- PHOTO SCAN: read the odometer / a fuel bill from a photo ----------
+   Runs on this device (Tesseract.js, loaded from a CDN the first time it is needed).
+   The photo is never uploaded anywhere. Results only fill the form; the user always checks and saves. */
+const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const Ocr = { lib: null, worker: null, timer: null, busy: false, onProgress: null };
+const CAM_ICON = '<svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+const IMG_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M5 18l5-5 4 4 2-2 3 3"/></svg>';
+
+function scanRow(kind, label) {
+  return `<div class="scanrow"><span class="small muted">${label}</span>
+    <button type="button" class="btn small ghost" data-act="scan-cam" data-kind="${kind}">${CAM_ICON} Camera</button>
+    <button type="button" class="btn small ghost" data-act="scan-gal" data-kind="${kind}">${IMG_ICON} Gallery</button>
+    <input type="file" accept="image/*" capture="environment" hidden data-scan="${kind}" data-src="cam">
+    <input type="file" accept="image/*" hidden data-scan="${kind}" data-src="gal"></div>
+    <div class="scanout small" id="f-scan-${kind}" aria-live="polite"></div>`;
+}
+
+function ocrLoadLib() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (Ocr.lib) return Ocr.lib;
+  Ocr.lib = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = OCR_SRC; sc.async = true;
+    sc.onload = () => { if (window.Tesseract) res(window.Tesseract); else { Ocr.lib = null; rej(new Error('load')); } };
+    sc.onerror = () => { Ocr.lib = null; rej(new Error('offline')); };
+    document.head.appendChild(sc);
+  });
+  return Ocr.lib;
+}
+async function ocrWorker() {
+  const T = await ocrLoadLib();
+  clearTimeout(Ocr.timer);
+  if (!Ocr.worker) Ocr.worker = await T.createWorker('eng', 1, { logger: m => { if (Ocr.onProgress) Ocr.onProgress(m); } });
+  return Ocr.worker;
+}
+function ocrRelease() {                       // free the engine's memory when idle
+  clearTimeout(Ocr.timer);
+  Ocr.timer = setTimeout(() => { const w = Ocr.worker; Ocr.worker = null; if (w) Promise.resolve(w.terminate()).catch(() => {}); }, 120000);
+}
+async function ocrReadFile(file, kind) {
+  let src;                                       // an <img> applies the photo's rotation (EXIF) in every modern browser
+  try {
+    src = await new Promise((res, rej) => {
+      const im = new Image(), u = URL.createObjectURL(file);
+      im.onload = () => { URL.revokeObjectURL(u); res(im); };
+      im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('badimg')); };
+      im.src = u;
+    });
+  } catch (e) { src = await createImageBitmap(file); }
+  const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height, long = Math.max(sw, sh);
+  const target = kind === 'odo' ? 1400 : 1800;
+  const sc = long > target ? target / long : (long < 1000 ? 1200 / long : 1);
+  const w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.imageSmoothingQuality = 'high'; cx.drawImage(src, 0, 0, w, h);
+  if (src.close) src.close();
+  return { cv, w, h, rgba: cx.getImageData(0, 0, w, h).data };
+}
+function ocrGrayCanvas(g, w, h) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d'), id = cx.createImageData(w, h), d = id.data;
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) { d[j] = d[j + 1] = d[j + 2] = g[i]; d[j + 3] = 255; }
+  cx.putImageData(id, 0, 0);
+  return cv;
+}
+function ocrThumb(cv) {
+  try {
+    const h = 72, w = Math.max(1, Math.round(cv.width * h / cv.height));
+    const t = document.createElement('canvas'); t.width = w; t.height = h;
+    t.getContext('2d').drawImage(cv, 0, 0, w, h);
+    return t.toDataURL('image/jpeg', 0.6);
+  } catch (e) { return ''; }
+}
+
+function scanSet(kind, html) { const el = $('#f-scan-' + kind, sheet); if (el && el.isConnected) el.innerHTML = html; }
+function scanField(sel, val) { const el = $(sel, sheet); if (!el) return; el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
+function scanProgress(kind) {
+  return m => {
+    const p = Math.round((m.progress || 0) * 100), st = String(m.status || '');
+    if (/recogniz/i.test(st)) scanSet(kind, '<span class="muted">Reading… ' + p + '%</span>');
+    else if (/load|initiali/i.test(st)) scanSet(kind, '<span class="muted">Getting the reader ready (first time only, about 8 MB)…' + (p ? ' ' + p + '%' : '') + '</span>');
+  };
+}
+function scanThumbHtml(img) { const t = ocrThumb(img.cv); return t ? '<img class="scan-thumb" alt="Scanned photo" src="' + t + '">' : ''; }
+
+async function scanOdometer(img, worker, kind) {
+  const car = getActiveCar(), lr = C && C.lastReal;
+  const lastOdo = Math.max((lr && lr.k) || 0, car.odometer || 0);
+  await worker.setParameters({ tessedit_char_whitelist: '0123456789.,', tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
+  const texts = []; let cands = [];
+  for (const v of ocrVariants(img.rgba, img.w, img.h, 'odo')) {
+    const r = await worker.recognize(ocrGrayCanvas(v.gray, img.w, img.h));
+    texts.push(r.data.text); cands = ocrOdoCandidates(texts, lastOdo);
+    if (cands[0] && cands[0].ok && cands[0].score >= 8) break;
+  }
+  const good = cands.filter(c => c.ok);
+  if (!good.length) {
+    scanSet(kind, '<span class="err">Couldn\'t read the odometer reliably. Try a closer, straight photo without glare, or type it in.</span>');
+    return;
+  }
+  scanField('#f-km', String(good[0].val));
+  const chips = good.slice(1, 3).map(c => '<button type="button" class="scan-chip" data-act="scan-use" data-target="#f-km" data-val="' + c.val + '">' + fmt0(c.val) + '</button>').join('');
+  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(img) + '<div>Read <b>' + fmt0(good[0].val) + ' km</b>. Please check it against your dashboard.' +
+    (chips ? '<div class="scan-chips"><span class="muted">Other possibilities:</span>' + chips + '</div>' : '') + '</div></div>');
+}
+
+async function scanBill(img, worker, kind) {
+  await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '6', user_defined_dpi: '300' });
+  let res = null;
+  for (const v of ocrVariants(img.rgba, img.w, img.h, 'bill')) {
+    const r = await worker.recognize(ocrGrayCanvas(v.gray, img.w, img.h));
+    const p = ocrParseBill(r.data.text);
+    if (p && (!res || (p.how === 'matched' && res.how !== 'matched'))) res = p;
+    if (res && res.how === 'matched') break;
+  }
+  if (!res || !(res.amount > 0 || res.rate > 0)) {
+    scanSet(kind, '<span class="err">Couldn\'t read the bill. Try a flat, well-lit photo with the whole bill in view, or type the values in.</span>');
+    return;
+  }
+  const parts = [];
+  if (res.amount > 0) { scanField('#f-amt', res.amount.toFixed(2)); parts.push('Amount <b>' + res.amount.toFixed(2) + '</b>'); }
+  if (res.rate > 0) { scanField('#f-rate', String(res.rate)); parts.push('Rate <b>' + res.rate + '</b>'); }
+  if (res.litres > 0) parts.push(res.litres + ' L');
+  const missing = !(res.amount > 0) ? 'Amount not found, please type it.' : (!(res.rate > 0) ? 'Rate not found, please type it.' : '');
+  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(img) + '<div>Read from bill: ' + parts.join(' &middot; ') + '. Please check it against the bill.' +
+    (res.how === 'keywords' ? ' <span class="muted">Some values were worked out from the bill, so double-check them.</span>' : '') +
+    (missing ? ' <span class="err">' + missing + '</span>' : '') + '</div></div>');
+}
+
+async function runScan(kind, file) {
+  if (Ocr.busy) { toast('Still reading the previous photo.'); return; }
+  Ocr.busy = true; scanSet(kind, '<span class="muted">Preparing photo…</span>');
+  Ocr.onProgress = scanProgress(kind);
+  try {
+    const img = await ocrReadFile(file, kind);
+    const worker = await ocrWorker();
+    if (kind === 'odo') await scanOdometer(img, worker, kind); else await scanBill(img, worker, kind);
+  } catch (e) {
+    const m = String(e && e.message || e);
+    scanSet(kind, '<span class="err">' + (m === 'offline'
+      ? 'Reading photos needs internet the first time. Connect and try again, or type the value.'
+      : 'Couldn\'t read this photo (the reader may not have loaded). Please type the value.') + '</span>');
+  } finally { Ocr.busy = false; Ocr.onProgress = null; ocrRelease(); }
 }
 
 /* ---------- PAYMENT SHEET LOGIC ---------- */
@@ -2359,6 +2651,9 @@ const H = {
   },
 
   // Fill actions
+  'scan-cam': el => { const i = sheet.querySelector('input[data-scan="' + el.dataset.kind + '"][data-src="cam"]'); if (i) i.click(); },
+  'scan-gal': el => { const i = sheet.querySelector('input[data-scan="' + el.dataset.kind + '"][data-src="gal"]'); if (i) i.click(); },
+  'scan-use': el => { scanField(el.dataset.target, el.dataset.val); },
   'add-payer': () => {
     const nv = prompt('New payer name');
     if (nv == null) return;
@@ -2472,6 +2767,14 @@ document.addEventListener('click', e => {
 $('#excel-file-input').addEventListener('change', importFromExcel);
 $('#json-restore-input').addEventListener('change', restoreFromJson);
 
+sheet.addEventListener('change', e => {
+  const t = e.target;
+  if (t && t.matches && t.matches('input[type=file][data-scan]')) {
+    const f = t.files && t.files[0], kind = t.dataset.scan;
+    t.value = '';
+    if (f) runScan(kind, f);
+  }
+});
 sheet.addEventListener('input', e => {
   if (sheet.dataset.kind === 'fill') fillPreview();
 });

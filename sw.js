@@ -6,7 +6,9 @@ const OFFLINE_PAGE = './';
 const isGoogleApi = url =>
   url.hostname === 'accounts.google.com' ||
   url.hostname === 'googleapis.com' ||
-  url.hostname.endsWith('.googleapis.com');
+  url.hostname.endsWith('.googleapis.com') ||
+  // The photo reader (Tesseract.js) and its large data files are handled by the browser itself.
+  url.hostname === 'cdn.jsdelivr.net';
 
 self.addEventListener('install', event => {
   event.waitUntil(
