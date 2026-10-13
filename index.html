@@ -200,9 +200,22 @@ dialog#sheet::backdrop{background:rgba(6,14,20,.6)}
 .scanout{margin-top:8px;color:var(--ink-2);line-height:1.45}
 .scanout .err{color:var(--late);font-weight:600}
 .scanwrap{display:flex;align-items:center;gap:10px}
-.scan-thumb{height:56px;border-radius:8px;border:1px solid var(--line);flex:none}
+.scan-thumb{height:56px;max-width:140px;object-fit:contain;border-radius:8px;border:1px solid var(--line);flex:none}
 .scan-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
 .scan-chip{min-height:32px;padding:0 12px;border-radius:16px;border:1.5px solid var(--line);background:var(--surface-2);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer}
+dialog.crop-ov{position:fixed;inset:0;margin:0;width:100vw;height:100vh;max-width:none;max-height:none;border:0;border-radius:0;background:rgba(5,10,15,.97);color:#fff;padding:14px;touch-action:none}
+dialog.crop-ov[open]{display:flex;flex-direction:column;align-items:center;gap:12px}
+dialog.crop-ov::backdrop{background:#05080c}
+.crop-top{color:#fff;font-weight:700;text-align:center}
+.crop-stage{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
+.crop-wrap{position:relative;line-height:0;display:inline-block;overflow:hidden;border-radius:6px}
+.crop-wrap canvas{display:block;width:auto;height:auto;max-width:calc(100vw - 28px);max-height:calc(100vh - 150px)}
+.crop-box{position:absolute;border:2px solid #FFD54A;box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:move;touch-action:none}
+.crop-box i{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;background:#FFD54A;border:2px solid #05080c;border-radius:50%;touch-action:none;box-sizing:border-box}
+.crop-box i::after{content:'';position:absolute;inset:-14px}
+.crop-bar{display:flex;gap:10px;width:100%;max-width:420px}
+.crop-bar .btn{margin:0;flex:1;background:#fff;color:#0b141c;border:0}
+.crop-bar .btn.ghost{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.55)}
 .toast{position:fixed;left:50%;bottom:calc(82px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;max-width:calc(100% - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .loading{padding:40px 0;text-align:center;color:var(--ink-2)}
@@ -2207,11 +2220,14 @@ function ocrOdoCandidates(texts, lastOdo) {      // texts: array of raw OCR stri
 
 /* ---------- bill parsing ---------- */
 function ocrNums(text) {
-  const out = []; const re = /(^|[^\d.,])(\d{1,4}[.,]\d{1,3})(?!\d)/g; let m;
+  const out = []; const re = /(^|[^\d.,])(\d{1,4}[.,]\d{1,3})(?!\d)/g; const re2 = /(^|[^\d.,])(\d{1,4}) (\d{2})(?![\d.,])/g; let m;
   const lines = text.split(/\n/);
   lines.forEach((line, li) => {
     re.lastIndex = 0;
     while ((m = re.exec(line))) { const v = parseFloat(m[2].replace(',', '.')); if (isFinite(v) && v > 0) out.push({ v, line: li, text: line, dec: (m[2].split(/[.,]/)[1] || '').length }); re.lastIndex = m.index + m[0].length - 1; }
+    // dot-matrix bills often lose the decimal point: "135 16" -> 135.16 (only trusted when it fits Litres x Rate)
+    re2.lastIndex = 0;
+    while ((m = re2.exec(line))) { const v = parseFloat(m[2] + '.' + m[3]); if (isFinite(v) && v > 0) out.push({ v, line: li, text: line, dec: 2, spaced: true }); re2.lastIndex = m.index + m[0].length - 1; }
   });
   return out;
 }
@@ -2248,11 +2264,220 @@ function ocrParseBill(text) {
   return null;
 }
 
+/* ---------- SEVEN-SEGMENT LCD READER (pure functions, no DOM) ---------- */
+function lcdLabel(mask, w, h) {                 // 4-connected components of mask==1; returns [{x0,y0,x1,y1,area}]
+  const lab = new Int32Array(w * h), out = [], stack = new Int32Array(w * h);
+  let id = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!mask[i] || lab[i]) continue;
+    id++; let sp = 0, area = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    stack[sp++] = i; lab[i] = id;
+    while (sp) {
+      const p = stack[--sp], x = p % w, y = (p / w) | 0; area++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (x > 0 && mask[p - 1] && !lab[p - 1]) { lab[p - 1] = id; stack[sp++] = p - 1; }
+      if (x < w - 1 && mask[p + 1] && !lab[p + 1]) { lab[p + 1] = id; stack[sp++] = p + 1; }
+      if (y > 0 && mask[p - w] && !lab[p - w]) { lab[p - w] = id; stack[sp++] = p - w; }
+      if (y < h - 1 && mask[p + w] && !lab[p + w]) { lab[p + w] = id; stack[sp++] = p + w; }
+    }
+    out.push({ x0, y0, x1, y1, area, id });
+  }
+  return { comps: out, lab };
+}
+function lcdMorph(mask, w, h, r, dilate) {       // box dilate/erode via separable passes
+  const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+  const on = dilate ? 1 : 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let hit = !dilate;
+    for (let k = -r; k <= r; k++) { const xx = x + k; const v = (xx < 0 || xx >= w) ? (dilate ? 0 : 1) : mask[y * w + xx];
+      if (dilate ? v : !v) { hit = dilate; break; } }
+    tmp[y * w + x] = dilate ? (hit ? 1 : 0) : (hit ? 1 : 0);
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let hit = !dilate;
+    for (let k = -r; k <= r; k++) { const yy = y + k; const v = (yy < 0 || yy >= h) ? (dilate ? 0 : 1) : tmp[yy * w + x];
+      if (dilate ? v : !v) { hit = dilate; break; } }
+    out[y * w + x] = hit ? 1 : 0;
+  }
+  return out;
+}
+/* Find bright, solid, rectangular panels (an LCD) in a small gray image. Returns best rects first. */
+function lcdFindPanels(g, w, h) {
+  const hist = new Uint32Array(256); for (let i = 0; i < g.length; i++) hist[g[i]]++;
+  const res = [];
+  for (const pct of [0.80, 0.88, 0.93]) {
+    let c = 0, th = 255; for (let v = 0; v < 256; v++) { c += hist[v]; if (c >= g.length * pct) { th = v; break; } }
+    let m = new Uint8Array(w * h); for (let i = 0; i < g.length; i++) m[i] = g[i] >= th ? 1 : 0;
+    const r = Math.max(2, Math.round(Math.min(w, h) / 90));
+    m = lcdMorph(lcdMorph(m, w, h, r, true), w, h, r, false);          // close: fills the dark digits inside the panel
+    const { comps } = lcdLabel(m, w, h);
+    for (const k of comps) {
+      const bw = k.x1 - k.x0 + 1, bh = k.y1 - k.y0 + 1, fill = k.area / (bw * bh), ar = bw / bh, rel = (bw * bh) / (w * h);
+      if (rel < 0.004 || rel > 0.25 || ar < 1.1 || ar > 3.5 || fill < 0.80) continue;
+      // inside the panel there should be some dark ink (digits) but not too much
+      let ink = 0, tot = 0;
+      for (let y = k.y0; y <= k.y1; y++) for (let x = k.x0; x <= k.x1; x++) { tot++; if (g[y * w + x] < th - 25) ink++; }
+      const inkr = ink / tot; if (inkr < 0.02 || inkr > 0.35) continue;
+      res.push({ x: k.x0, y: k.y0, w: bw, h: bh, fill, ar, inkr, score: fill * 2 + Math.min(inkr, 0.2) * 4 - Math.abs(Math.log(ar / 1.9)) * 0.5 + Math.min(rel, 0.04) * 10 });
+    }
+  }
+  res.sort((a, b) => b.score - a.score);
+  const keep = [];
+  for (const r of res) if (!keep.some(k => Math.abs(k.x - r.x) < r.w * 0.3 && Math.abs(k.y - r.y) < r.h * 0.3)) keep.push(r);
+  return keep.slice(0, 3);
+}
+/* ---------- decode one row of seven-segment digits from a CROP that contains the odometer ---------- */
+const LCD_PAT = { '0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg' };
+const LCD_SEG = 'abcdefg';
+function lcdInk(g, w, h) {                       // ink = the minority tone (dark digits on light OR lit digits on dark)
+  const hist = new Uint32Array(256); for (let i = 0; i < g.length; i++) hist[g[i]]++;
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sB = 0, wB = 0, best = 0, th = 128;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = g.length - wB; if (!wF) break; sB += t * hist[t];
+    const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF); if (v > best) { best = v; th = t; } }
+  let nLow = 0; for (let t = 0; t <= th; t++) nLow += hist[t];
+  const darkInk = nLow < g.length / 2;           // fewer dark pixels than bright ones -> ink is dark
+  const src = darkInk ? g : (() => { const o = new Uint8Array(g.length); for (let i = 0; i < g.length; i++) o[i] = 255 - g[i]; return o; })();
+  const m = ocrBox(src, w, h, Math.max(12, Math.round(Math.min(w, h) / 8)));
+  const ink = new Uint8Array(g.length);
+  for (let i = 0; i < g.length; i++) ink[i] = src[i] < m[i] - 22 ? 1 : 0;
+  const L = lcdLabel(ink, w, h), kill = {};
+  L.comps.forEach(k => {
+    const touches = k.x0 === 0 || k.y0 === 0 || k.x1 === w - 1 || k.y1 === h - 1;
+    if (touches && (k.area > w * h * 0.012 || k.x1 - k.x0 > w * 0.5 || k.y1 - k.y0 > h * 0.5)) kill[k.id] = 1;
+  });
+  for (let i = 0; i < ink.length; i++) if (ink[i] && kill[L.lab[i]]) ink[i] = 0;
+  return ink;
+}
+function lcdDeskew(ink, w, h) {                  // find the small rotation that makes the text rows most compact, then straighten
+  const cx = w / 2, cy = h / 2; let bestA = 0, bestS = -1;
+  const pts = []; for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) pts.push(x, y);
+  const step = pts.length > 400000 ? 4 : (pts.length > 150000 ? 2 : 1);
+  for (let deg = -10; deg <= 10.01; deg += 0.5) {
+    const t = deg * Math.PI / 180, sn = Math.sin(t), cs = Math.cos(t), bins = new Float32Array(h * 2 + 4);
+    for (let i = 0; i < pts.length; i += 2 * step) { const yy = (pts[i + 1] - cy) * cs + (pts[i] - cx) * sn; bins[Math.round(yy + h)]++; }
+    let sc = 0; for (let i = 0; i < bins.length; i++) sc += bins[i] * bins[i];
+    if (sc > bestS) { bestS = sc; bestA = deg; }
+  }
+  if (Math.abs(bestA) < 0.4) return { mask: ink, deg: 0 };
+  const t = bestA * Math.PI / 180, sn = Math.sin(t), cs = Math.cos(t), out = new Uint8Array(w * h);
+  for (let i = 0; i < pts.length; i += 2) {
+    const x = pts[i] - cx, y = pts[i + 1] - cy;
+    const nx = Math.round(x * cs - y * sn + cx), ny = Math.round(x * sn + y * cs + cy);
+    if (nx >= 0 && nx < w && ny >= 0 && ny < h) out[ny * w + nx] = 1;
+  }
+  // rotating thin strokes by nearest-neighbour leaves pin-holes: close them
+  return { mask: lcdMorph(lcdMorph(out, w, h, 1, true), w, h, 1, false), deg: bestA };
+}
+function lcdBands(ink, w, h) {                   // horizontal bands of ink -> [{y0,y1}]
+  const rows = new Float32Array(h); for (let y = 0; y < h; y++) { let s = 0; for (let x = 0; x < w; x++) s += ink[y * w + x]; rows[y] = s; }
+  const sm = new Float32Array(h); const r = Math.max(1, Math.round(h / 120));
+  for (let y = 0; y < h; y++) { let s = 0, n = 0; for (let k = -r; k <= r; k++) { const yy = y + k; if (yy >= 0 && yy < h) { s += rows[yy]; n++; } } sm[y] = s / n; }
+  const mx = Math.max.apply(null, sm), th = Math.max(2, mx * 0.12), bands = []; let st = -1;
+  for (let y = 0; y <= h; y++) { const on = y < h && sm[y] > th; if (on && st < 0) st = y; if (!on && st >= 0) { if (y - st >= h * 0.05) bands.push({ y0: st, y1: y - 1 }); st = -1; } }
+  return bands;
+}
+function lcdShear(ink, w, h, y0, y1) {          // estimate italic slant of a band and straighten it
+  let bx0 = w, bx1 = 0;
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; }
+  const xs = bx0 + Math.round((bx1 - bx0) * 0.38);          // ignore the left label
+  let bestK = 0, bestS = -1; const ym = (y0 + y1) / 2, off = 300;
+  for (let k = 0; k <= 0.45; k += 0.01) {
+    const cols = new Float32Array(w + 700);
+    for (let y = y0; y <= y1; y++) for (let x = xs; x <= bx1; x++) if (ink[y * w + x]) cols[Math.round(x + k * (y - ym)) + off]++;
+    let s = 0; for (let i = 0; i < cols.length; i++) s += cols[i] * cols[i];
+    if (s > bestS) { bestS = s; bestK = k; }
+  }
+  const bh = y1 - y0 + 1, out = new Uint8Array(w * bh);
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) { const nx = Math.round(x + bestK * (y - ym)); if (nx >= 0 && nx < w) out[(y - y0) * w + nx] = 1; }
+  return { mask: out, w, h: bh, k: bestK };
+}
+function lcdSample(mask, w, h, x0, x1, y0, y1) {
+  x0 = Math.max(0, Math.round(x0)); x1 = Math.min(w - 1, Math.round(x1)); y0 = Math.max(0, Math.round(y0)); y1 = Math.min(h - 1, Math.round(y1));
+  let n = 0, s = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { n++; s += mask[y * w + x]; }
+  return n ? s / n : 0;
+}
+function lcdDecodeDigit(mask, w, h, cx0, cx1) {   // cell [cx0,cx1] x full height of mask
+  const W = cx1 - cx0 + 1, H = h;
+  const R = {
+    a: [0.18, 0.82, 0, 0.17], g: [0.18, 0.82, 0.41, 0.59], d: [0.18, 0.82, 0.83, 1],
+    f: [0, 0.3, 0.08, 0.46], b: [0.7, 1, 0.08, 0.46], e: [0, 0.3, 0.54, 0.92], c: [0.7, 1, 0.54, 0.92]
+  };
+  const f = {}; LCD_SEG.split('').forEach(s => { const r = R[s]; f[s] = lcdSample(mask, w, h, cx0 + r[0] * W, cx0 + r[1] * W, r[2] * H, r[3] * H); });
+  const on = {}; LCD_SEG.split('').forEach(s => { on[s] = f[s] > 0.38; });
+  // rank all digits by how well they match (sum of agreement)
+  const scores = Object.keys(LCD_PAT).map(d => { let sc = 0; LCD_SEG.split('').forEach(s => { const want = LCD_PAT[d].indexOf(s) >= 0; sc += want ? f[s] : (1 - f[s]); }); return { d, sc }; }).sort((a, b) => b.sc - a.sc);
+  return { d: scores[0].d, alt: scores[1].d, conf: scores[0].sc - scores[1].sc, f };
+}
+function lcdReadBand(ink, w, h, band) {
+  const sh = lcdShear(ink, w, h, band.y0, band.y1), m = sh.mask, mw = sh.w, mh = sh.h;
+  const cols = new Float32Array(mw); for (let x = 0; x < mw; x++) { let s = 0; for (let y = 0; y < mh; y++) s += m[y * mw + x]; cols[x] = s; }
+  const groups = []; let st = -1, gap = 0; const minInk = Math.max(2, mh * 0.03), maxGap = Math.max(2, Math.round(mh * 0.04));
+  for (let x = 0; x <= mw; x++) {
+    const on = x < mw && cols[x] >= minInk;
+    if (on) { if (st < 0) st = x; gap = 0; } else if (st >= 0) { gap++; if (gap > maxGap || x === mw) { groups.push({ x0: st, x1: x - gap }); st = -1; gap = 0; } }
+  }
+  // vertical extent of every group; digits reach (almost) the full band height, labels such as ODO / km do not
+  groups.forEach(g => { let top = mh, bot = 0; for (let y = 0; y < mh; y++) for (let x = g.x0; x <= g.x1; x++) if (m[y * mw + x]) { if (y < top) top = y; if (y > bot) bot = y; } g.top = top; g.bot = bot; g.hh = bot - top + 1; });
+  const tall = groups.filter(g => g.hh >= mh * 0.72);
+  if (!tall.length) return null;
+  const widths = tall.map(g => g.x1 - g.x0 + 1).sort((a, b) => a - b);
+  const Wd = widths[Math.floor(widths.length * 0.75)] || widths[widths.length - 1];
+  const digits = [];
+  tall.forEach(g => {
+    const gw = g.x1 - g.x0 + 1;
+    if (gw < mh * 0.10 || gw > Wd * 1.4) return;
+    const cx0 = gw < Wd * 0.55 ? g.x1 - Wd + 1 : g.x0;            // a lone "1" only has its right-hand bars
+    digits.push(Object.assign({ x0: cx0, x1: g.x1 }, lcdDecodeDigit(m, mw, mh, cx0, g.x1)));
+  });
+  return { digits, k: sh.k, Wd, mh };
+}
+/* Turn the decoded digit sequence into ranked odometer candidates, using the previous odometer as a sanity check. */
+function lcdCandidates(digits, lastOdo) {
+  const L = lastOdo > 0 ? String(lastOdo).length : 6;
+  const lens = [L, L - 1, L + 1].filter(n => n >= 4 && n <= 7);
+  const seen = {};
+  const push = (arr, lenPenalty, swaps) => {
+    const str = arr.map(x => x.d).join(''); const val = parseInt(str, 10);
+    if (!isFinite(val) || /^(\d)\1+$/.test(str)) return;
+    let sc = arr.reduce((s, x) => s + Math.min(x.conf, 1.2), 0) / arr.length * 2 - lenPenalty - swaps * 0.9;
+    const diff = val - lastOdo;
+    if (lastOdo > 0) sc += (diff >= 0 && diff <= 3000) ? 10 : (diff >= 0 && diff <= 15000) ? 4 : -4;
+    if (!seen[val] || seen[val].score < sc) seen[val] = { val, score: sc, ok: lastOdo > 0 ? (diff >= 0 && diff <= 15000) : str.length >= 5 };
+  };
+  lens.forEach((len, li) => {
+    for (let st = 0; st + len <= digits.length; st++) {
+      const win = digits.slice(st, st + len), pen = li ? 1.5 : 0;
+      push(win, pen, 0);
+      const order = win.map((x, i) => i).sort((p, q) => win[p].conf - win[q].conf).slice(0, 3);
+      order.forEach(i => push(win.map((x, j) => j === i ? { d: x.alt, conf: x.conf * 0.4, alt: x.d } : x), pen, 1));
+      if (order.length > 1) push(win.map((x, j) => (j === order[0] || j === order[1]) ? { d: x.alt, conf: x.conf * 0.4, alt: x.d } : x), pen, 2);
+    }
+  });
+  return Object.keys(seen).map(k => seen[k]).sort((a, b) => (b.ok - a.ok) || (b.score - a.score)).slice(0, 4);
+}
+/* Full reader for a crop that contains the odometer: returns { cands, digits } or null */
+function lcdReadOdometer(g, w, h, lastOdo) {
+  const ink0 = lcdInk(g, w, h), ink = lcdDeskew(ink0, w, h).mask, bands = lcdBands(ink, w, h);
+  let pick = null;
+  bands.forEach(b => {
+    const r = lcdReadBand(ink, w, h, b); if (!r || r.digits.length < 4) return;
+    const n = r.digits.length; if (n > 9) return;
+    if (!pick || (n >= 5 && n <= 8 && b.y0 > pick.b.y0) || (pick.r.digits.length < 5 && n > pick.r.digits.length)) pick = { b, r };
+  });
+  if (!pick) return null;
+  return { cands: lcdCandidates(pick.r.digits, lastOdo), digits: pick.r.digits, slant: pick.r.k };
+}
+
 /* ---------- PHOTO SCAN: read the odometer / a fuel bill from a photo ----------
-   Runs on this device (Tesseract.js, loaded from a CDN the first time it is needed).
-   The photo is never uploaded anywhere. Results only fill the form; the user always checks and saves. */
-const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-const Ocr = { lib: null, worker: null, timer: null, busy: false, onProgress: null };
+   Everything runs on this device and the photo is never uploaded.
+   - Odometer: the person drags a box over the digits; a built-in seven-segment reader decodes them (no download needed).
+     If that is not sure, the general text reader (Tesseract.js) is used as a second opinion.
+   - Fuel bill: Tesseract.js reads the text; Amount and Rate are cross-checked with Litres.
+   Tesseract.js is loaded from ./ocr/ when those files are uploaded next to index.html (fully offline),
+   otherwise from a CDN the first time it is needed (then cached by the browser). */
+const OCR_CDN_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const Ocr = { lib: null, worker: null, timer: null, busy: false, onProgress: null, local: false };
 const CAM_ICON = '<svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const IMG_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M5 18l5-5 4 4 2-2 3 3"/></svg>';
 
@@ -2265,30 +2490,42 @@ function scanRow(kind, label) {
     <div class="scanout small" id="f-scan-${kind}" aria-live="polite"></div>`;
 }
 
+function ocrLocalBase() { try { return new URL('ocr/', document.baseURI).href; } catch (e) { return 'ocr/'; } }
 function ocrLoadLib() {
   if (window.Tesseract) return Promise.resolve(window.Tesseract);
   if (Ocr.lib) return Ocr.lib;
-  Ocr.lib = new Promise((res, rej) => {
+  const load = src => new Promise((res, rej) => {
     const sc = document.createElement('script');
-    sc.src = OCR_SRC; sc.async = true;
-    sc.onload = () => { if (window.Tesseract) res(window.Tesseract); else { Ocr.lib = null; rej(new Error('load')); } };
-    sc.onerror = () => { Ocr.lib = null; rej(new Error('offline')); };
+    sc.src = src; sc.async = true;
+    sc.onload = () => { if (window.Tesseract) res(); else rej(new Error('load')); };
+    sc.onerror = () => { sc.remove(); rej(new Error('offline')); };
     document.head.appendChild(sc);
   });
+  Ocr.lib = (async () => {
+    try { await load(ocrLocalBase() + 'tesseract.min.js'); Ocr.local = true; }
+    catch (e) { await load(OCR_CDN_SRC); Ocr.local = false; }
+    return window.Tesseract;
+  })().catch(e => { Ocr.lib = null; throw e; });
   return Ocr.lib;
 }
 async function ocrWorker() {
   const T = await ocrLoadLib();
   clearTimeout(Ocr.timer);
-  if (!Ocr.worker) Ocr.worker = await T.createWorker('eng', 1, { logger: m => { if (Ocr.onProgress) Ocr.onProgress(m); } });
+  if (!Ocr.worker) {
+    const opts = { logger: m => { if (Ocr.onProgress) Ocr.onProgress(m); } };
+    if (Ocr.local) { const b = ocrLocalBase(); Object.assign(opts, { workerPath: b + 'worker.min.js', corePath: b, langPath: b, gzip: true }); }
+    Ocr.worker = await T.createWorker('eng', 1, opts);
+  }
   return Ocr.worker;
 }
 function ocrRelease() {                       // free the engine's memory when idle
   clearTimeout(Ocr.timer);
   Ocr.timer = setTimeout(() => { const w = Ocr.worker; Ocr.worker = null; if (w) Promise.resolve(w.terminate()).catch(() => {}); }, 120000);
 }
-async function ocrReadFile(file, kind) {
-  let src;                                       // an <img> applies the photo's rotation (EXIF) in every modern browser
+
+/* ----- image helpers ----- */
+async function ocrOpenImage(file) {            // an <img> applies the photo's rotation (EXIF) in every modern browser
+  let src;
   try {
     src = await new Promise((res, rej) => {
       const im = new Image(), u = URL.createObjectURL(file);
@@ -2297,15 +2534,19 @@ async function ocrReadFile(file, kind) {
       im.src = u;
     });
   } catch (e) { src = await createImageBitmap(file); }
-  const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height, long = Math.max(sw, sh);
-  const target = kind === 'odo' ? 1400 : 1800;
-  const sc = long > target ? target / long : (long < 1000 ? 1200 / long : 1);
-  const w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+  return { src, sw: src.naturalWidth || src.width, sh: src.naturalHeight || src.height };
+}
+function ocrDrawCanvas(img, sx, sy, sw, sh, w, h, readable) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  const cx = cv.getContext('2d', { willReadFrequently: true });
-  cx.imageSmoothingQuality = 'high'; cx.drawImage(src, 0, 0, w, h);
-  if (src.close) src.close();
-  return { cv, w, h, rgba: cx.getImageData(0, 0, w, h).data };
+  const cx = cv.getContext('2d', { willReadFrequently: !!readable });
+  cx.imageSmoothingQuality = 'high'; cx.drawImage(img.src, sx, sy, sw, sh, 0, 0, w, h);
+  return { cv, w, h, rgba: readable ? cx.getImageData(0, 0, w, h).data : null };
+}
+function ocrReadFileScaled(img, kind) {
+  const long = Math.max(img.sw, img.sh), target = 1800;
+  const sc = long > target ? target / long : (long < 1000 ? 1200 / long : 1);
+  const w = Math.max(1, Math.round(img.sw * sc)), h = Math.max(1, Math.round(img.sh * sc));
+  return ocrDrawCanvas(img, 0, 0, img.sw, img.sh, w, h, true);
 }
 function ocrGrayCanvas(g, w, h) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
@@ -2316,50 +2557,141 @@ function ocrGrayCanvas(g, w, h) {
 }
 function ocrThumb(cv) {
   try {
-    const h = 72, w = Math.max(1, Math.round(cv.width * h / cv.height));
+    const h = 56, w = Math.max(1, Math.min(220, Math.round(cv.width * h / cv.height)));
     const t = document.createElement('canvas'); t.width = w; t.height = h;
     t.getContext('2d').drawImage(cv, 0, 0, w, h);
     return t.toDataURL('image/jpeg', 0.6);
   } catch (e) { return ''; }
 }
 
+/* ----- the box the person drags over the odometer digits ----- */
+function odoBoxLoad(ar) {
+  try { const o = JSON.parse(localStorage.getItem('carlog.odoBox') || 'null'); if (o && o.r && Math.abs(o.ar - ar) < 0.12) return o.r; } catch (e) {}
+  return null;
+}
+function odoBoxSave(r, ar) { try { localStorage.setItem('carlog.odoBox', JSON.stringify({ r, ar })); } catch (e) {} }
+function cropPick(img, init) {                  // resolves { x, y, w, h } (0..1 of the photo) or null if cancelled
+  return new Promise(resolve => {
+    const pv = ocrDrawCanvas(img, 0, 0, img.sw, img.sh, Math.min(1000, Math.round(img.sw * Math.min(1, 1000 / Math.max(img.sw, img.sh)))), Math.round(img.sh * Math.min(1, 1000 / Math.max(img.sw, img.sh))), false).cv;
+    const ov = document.createElement('dialog'); ov.className = 'crop-ov';
+    ov.innerHTML = '<div class="crop-top">Move the box over the odometer digits</div>' +
+      '<div class="crop-stage"><div class="crop-wrap"><div class="crop-box"><i data-h="nw" style="left:0;top:0"></i><i data-h="ne" style="left:100%;top:0"></i><i data-h="sw" style="left:0;top:100%"></i><i data-h="se" style="left:100%;top:100%"></i></div></div></div>' +
+      '<div class="crop-bar"><button type="button" class="btn ghost" data-c="cancel">Cancel</button><button type="button" class="btn" data-c="read">Read</button></div>';
+    const wrap = ov.querySelector('.crop-wrap'), box = ov.querySelector('.crop-box');
+    wrap.insertBefore(pv, box); document.body.appendChild(ov);
+    if (ov.showModal) ov.showModal(); else ov.setAttribute('open', '');
+    const finish = v => { try { ov.close(); } catch (e) {} ov.remove(); resolve(v); };
+    ov.addEventListener('cancel', e => { e.preventDefault(); finish(null); });
+    let r = init || { x: 0.1, y: 0.35, w: 0.8, h: 0.25 }, drag = null, W = 1, H = 1;
+    const paint = () => { box.style.left = r.x * 100 + '%'; box.style.top = r.y * 100 + '%'; box.style.width = r.w * 100 + '%'; box.style.height = r.h * 100 + '%'; };
+    paint();
+    ov.addEventListener('pointerdown', e => {
+      const t = e.target, mode = t.dataset && t.dataset.h ? t.dataset.h : (t === box ? 'move' : null);
+      if (!mode) return;
+      const b = wrap.getBoundingClientRect(); W = b.width || 1; H = b.height || 1;
+      drag = { mode, sx: e.clientX, sy: e.clientY, r: { x: r.x, y: r.y, w: r.w, h: r.h } };
+      if (t.setPointerCapture) { try { t.setPointerCapture(e.pointerId); } catch (x) {} }
+      e.preventDefault();
+    });
+    ov.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = (e.clientX - drag.sx) / W, dy = (e.clientY - drag.sy) / H, o = drag.r, min = 0.05;
+      let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+      if (drag.mode === 'move') { x0 = Math.min(1 - o.w, Math.max(0, o.x + dx)); y0 = Math.min(1 - o.h, Math.max(0, o.y + dy)); x1 = x0 + o.w; y1 = y0 + o.h; }
+      else {
+        if (/w/.test(drag.mode)) x0 = Math.min(x1 - min, Math.max(0, o.x + dx));
+        if (/e/.test(drag.mode)) x1 = Math.max(x0 + min, Math.min(1, o.x + o.w + dx));
+        if (/n/.test(drag.mode)) y0 = Math.min(y1 - min, Math.max(0, o.y + dy));
+        if (/s/.test(drag.mode)) y1 = Math.max(y0 + min, Math.min(1, o.y + o.h + dy));
+      }
+      r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; paint();
+    });
+    const end = () => { drag = null; };
+    ov.addEventListener('pointerup', end); ov.addEventListener('pointercancel', end);
+    ov.querySelector('[data-c="cancel"]').onclick = () => finish(null);
+    ov.querySelector('[data-c="read"]').onclick = () => finish(r);
+  });
+}
+
+/* ----- messages in the form ----- */
 function scanSet(kind, html) { const el = $('#f-scan-' + kind, sheet); if (el && el.isConnected) el.innerHTML = html; }
 function scanField(sel, val) { const el = $(sel, sheet); if (!el) return; el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
 function scanProgress(kind) {
   return m => {
     const p = Math.round((m.progress || 0) * 100), st = String(m.status || '');
     if (/recogniz/i.test(st)) scanSet(kind, '<span class="muted">Reading… ' + p + '%</span>');
-    else if (/load|initiali/i.test(st)) scanSet(kind, '<span class="muted">Getting the reader ready (first time only, about 8 MB)…' + (p ? ' ' + p + '%' : '') + '</span>');
+    else if (/load|initiali/i.test(st)) scanSet(kind, '<span class="muted">Getting the reader ready' + (Ocr.local ? '' : ' (first time only, about 8 MB)') + '…' + (p ? ' ' + p + '%' : '') + '</span>');
   };
 }
-function scanThumbHtml(img) { const t = ocrThumb(img.cv); return t ? '<img class="scan-thumb" alt="Scanned photo" src="' + t + '">' : ''; }
+function scanThumbHtml(cv) { const t = ocrThumb(cv); return t ? '<img class="scan-thumb" alt="Scanned photo" src="' + t + '">' : ''; }
+function scanLastOdo() { const car = getActiveCar(), lr = C && C.lastReal; return Math.max((lr && lr.k) || 0, (car && car.odometer) || 0); }
 
-async function scanOdometer(img, worker, kind) {
-  const car = getActiveCar(), lr = C && C.lastReal;
-  const lastOdo = Math.max((lr && lr.k) || 0, car.odometer || 0);
-  await worker.setParameters({ tessedit_char_whitelist: '0123456789.,', tessedit_pageseg_mode: '11', user_defined_dpi: '300' });
-  const texts = []; let cands = [];
-  for (const v of ocrVariants(img.rgba, img.w, img.h, 'odo')) {
-    const r = await worker.recognize(ocrGrayCanvas(v.gray, img.w, img.h));
-    texts.push(r.data.text); cands = ocrOdoCandidates(texts, lastOdo);
-    if (cands[0] && cands[0].ok && cands[0].score >= 8) break;
+/* ----- odometer ----- */
+async function scanOdoCrop(img, rect, kind) {
+  const lastOdo = scanLastOdo();
+  const R = { x: rect.x * img.sw, y: rect.y * img.sh, w: Math.max(8, rect.w * img.sw), h: Math.max(8, rect.h * img.sh) };
+  let scale = 1000 / R.w; scale = Math.max(0.35, Math.min(3, scale));
+  while (R.w * scale * R.h * scale > 1.8e6) scale *= 0.9;
+  const w = Math.max(8, Math.round(R.w * scale)), h = Math.max(8, Math.round(R.h * scale));
+  const crop = ocrDrawCanvas(img, R.x, R.y, R.w, R.h, w, h, true);
+  let cands = [];
+  try {                                          // 1) built-in seven-segment reader (offline, nothing to download)
+    const g = ocrStretch(ocrToGray(crop.rgba, w * h));
+    const res = lcdReadOdometer(g, w, h, lastOdo);
+    if (res) cands = res.cands;
+  } catch (e) {}
+  if (!(cands[0] && cands[0].ok && cands[0].score >= 8)) {   // 2) not sure -> ask the general text reader as well
+    try {
+      const worker = await ocrWorker();
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789.,', tessedit_pageseg_mode: '6', user_defined_dpi: '300' });
+      const texts = [];
+      for (const v of ocrVariants(crop.rgba, w, h, 'odo')) {
+        const r = await worker.recognize(ocrGrayCanvas(v.gray, w, h));
+        texts.push(r.data.text);
+        const t = ocrOdoCandidates(texts, lastOdo);
+        if (t[0] && t[0].ok && t[0].score >= 8) break;
+      }
+      const t = ocrOdoCandidates(texts, lastOdo), seen = {};
+      cands = cands.concat(t).filter(c => seen[c.val] ? false : (seen[c.val] = 1)).sort((a, b) => (b.ok - a.ok) || (b.score - a.score));
+    } catch (e) { if (!cands.length) throw e; }
   }
   const good = cands.filter(c => c.ok);
   if (!good.length) {
-    scanSet(kind, '<span class="err">Couldn\'t read the odometer reliably. Try a closer, straight photo without glare, or type it in.</span>');
+    scanSet(kind, '<span class="err">Couldn\'t read the odometer reliably. Make the box cover only the digits, or type the value in.</span>');
     return;
   }
   scanField('#f-km', String(good[0].val));
   const chips = good.slice(1, 3).map(c => '<button type="button" class="scan-chip" data-act="scan-use" data-target="#f-km" data-val="' + c.val + '">' + fmt0(c.val) + '</button>').join('');
-  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(img) + '<div>Read <b>' + fmt0(good[0].val) + ' km</b>. Please check it against your dashboard.' +
+  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(crop.cv) + '<div>Read <b>' + fmt0(good[0].val) + ' km</b>. Please check it against your dashboard.' +
     (chips ? '<div class="scan-chips"><span class="muted">Other possibilities:</span>' + chips + '</div>' : '') + '</div></div>');
 }
+async function runOdoScan(file) {
+  if (Ocr.busy) { toast('Still reading the previous photo.'); return; }
+  Ocr.busy = true; scanSet('odo', '<span class="muted">Preparing photo…</span>');
+  Ocr.onProgress = scanProgress('odo');
+  try {
+    const img = await ocrOpenImage(file), ar = img.sw / img.sh;
+    scanSet('odo', '');
+    const rect = await cropPick(img, odoBoxLoad(ar));
+    if (!rect) return;
+    odoBoxSave(rect, ar);
+    scanSet('odo', '<span class="muted">Reading…</span>');
+    await scanOdoCrop(img, rect, 'odo');
+  } catch (e) {
+    const m = String(e && e.message || e);
+    scanSet('odo', '<span class="err">' + (m === 'offline'
+      ? 'Reading photos needs internet the first time. Connect and try again, or type the value.'
+      : 'Couldn\'t read this photo. Please type the value.') + '</span>');
+  } finally { Ocr.busy = false; Ocr.onProgress = null; ocrRelease(); }
+}
 
+/* ----- fuel bill ----- */
 async function scanBill(img, worker, kind) {
+  const big = ocrReadFileScaled(img, 'bill');
   await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '6', user_defined_dpi: '300' });
   let res = null;
-  for (const v of ocrVariants(img.rgba, img.w, img.h, 'bill')) {
-    const r = await worker.recognize(ocrGrayCanvas(v.gray, img.w, img.h));
+  for (const v of ocrVariants(big.rgba, big.w, big.h, 'bill')) {
+    const r = await worker.recognize(ocrGrayCanvas(v.gray, big.w, big.h));
     const p = ocrParseBill(r.data.text);
     if (p && (!res || (p.how === 'matched' && res.how !== 'matched'))) res = p;
     if (res && res.how === 'matched') break;
@@ -2373,19 +2705,19 @@ async function scanBill(img, worker, kind) {
   if (res.rate > 0) { scanField('#f-rate', String(res.rate)); parts.push('Rate <b>' + res.rate + '</b>'); }
   if (res.litres > 0) parts.push(res.litres + ' L');
   const missing = !(res.amount > 0) ? 'Amount not found, please type it.' : (!(res.rate > 0) ? 'Rate not found, please type it.' : '');
-  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(img) + '<div>Read from bill: ' + parts.join(' &middot; ') + '. Please check it against the bill.' +
+  scanSet(kind, '<div class="scanwrap">' + scanThumbHtml(big.cv) + '<div>Read from bill: ' + parts.join(' &middot; ') + '. Please check it against the bill.' +
     (res.how === 'keywords' ? ' <span class="muted">Some values were worked out from the bill, so double-check them.</span>' : '') +
     (missing ? ' <span class="err">' + missing + '</span>' : '') + '</div></div>');
 }
-
 async function runScan(kind, file) {
+  if (kind === 'odo') return runOdoScan(file);
   if (Ocr.busy) { toast('Still reading the previous photo.'); return; }
   Ocr.busy = true; scanSet(kind, '<span class="muted">Preparing photo…</span>');
   Ocr.onProgress = scanProgress(kind);
   try {
-    const img = await ocrReadFile(file, kind);
+    const img = await ocrOpenImage(file);
     const worker = await ocrWorker();
-    if (kind === 'odo') await scanOdometer(img, worker, kind); else await scanBill(img, worker, kind);
+    await scanBill(img, worker, kind);
   } catch (e) {
     const m = String(e && e.message || e);
     scanSet(kind, '<span class="err">' + (m === 'offline'
