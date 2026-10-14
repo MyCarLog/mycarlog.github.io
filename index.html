@@ -606,7 +606,7 @@ function compute() {
   const comp = act.fuel, self = byPayer.S || 0, others = totalFuel - comp - self;
   const received = act.rec;
   let odo = real.length ? Math.max.apply(null, real.map(r => r.k)) : (car.odometer || null);
-  (car.service || []).forEach(it => (it.h || []).forEach(e => { if (odo == null || e.k > odo) odo = e.k; }));
+  (car.service || []).forEach(it => { if (svcIsEntry(it)) return; (it.h || []).forEach(e => { if (odo == null || e.k > odo) odo = e.k; }); });
   car.odometer = odo;
   const totalRun = D.reduce((s, r) => s + (r.run > 0 ? r.run : 0), 0);
 
@@ -627,7 +627,7 @@ function compute() {
 }
 
 function svcCalc(it) {
-  if (!it || !it.h || !it.h.length) return null;
+  if (!it || !it.h || !it.h.length || svcIsEntry(it)) return null;   // date based entries have no km maths
   const h = it.h.slice().sort((a, b) => a.k - b.k);
   const last = h[h.length - 1];
   if (!last) return null;
@@ -639,6 +639,16 @@ function svcCalc(it) {
     state: left < 0 ? 'late' : (left <= (last.i * 0.1) ? 'soon' : 'ok')
   };
 }
+
+/* A "Service Entry" is date based: { i, n, t:'e', h:[{ d:'YYYY-MM-DD' }] }.  A "Service Reminder" is km based: { i, n, h:[{ k, i }] }. */
+const svcIsEntry = it => !!it && it.t === 'e';
+const entryByDate = (a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+function entryCalc(it) {
+  if (!it || !it.h || !it.h.length) return null;
+  const h = it.h.slice().sort(entryByDate), last = h[h.length - 1];
+  return { h, last, days: Math.max(0, Math.round(dayNum(today()) - dayNum(last.d))) };
+}
+const daysAgoTxt = n => n <= 0 ? 'Today' : n === 1 ? '1 day ago' : fmt0(n) + ' days ago';
 
 /* ---------- 1. EXCEL EXPORT (EXACT DASHBOARD & FORMULAS) ---------- */
 function exportToExcel() {
@@ -654,8 +664,8 @@ function exportToExcel() {
   dashRows.push(["", "🚘  CAR MAINTENANCE DASHBOARD"]);
   dashRows.push([]);
 
-  const oil = (car.service || []).find(s => s.i === 'oil' || /oil/i.test(s.n)) || { n: 'Oil change', h: [] };
-  const tyre = (car.service || []).find(s => s.i === 'tyre' || /tyre|tire/i.test(s.n)) || { n: 'Tyre rotation', h: [] };
+  const oil = (car.service || []).filter(s => !svcIsEntry(s)).find(s => s.i === 'oil' || /oil/i.test(s.n)) || { n: 'Oil change', h: [] };
+  const tyre = (car.service || []).filter(s => !svcIsEntry(s)).find(s => s.i === 'tyre' || /tyre|tire/i.test(s.n)) || { n: 'Tyre rotation', h: [] };
   const lastOil = (oil.h && oil.h.length) ? oil.h[oil.h.length - 1] : { k: 0, i: 5000 };
   const lastTyre = (tyre.h && tyre.h.length) ? tyre.h[tyre.h.length - 1] : { k: 0, i: 10000 };
 
@@ -767,11 +777,12 @@ function exportToExcel() {
   XLSX.utils.book_append_sheet(wb, payWS, "Payments");
 
   /* --- Sheet 4: Service Log --- */
-  const svcHeader = [["Service ID", "Service Name", "Odometer (km)", "Interval (km)"]];
+  const svcHeader = [["Service ID", "Service Name", "Odometer (km)", "Interval (km)", "Type", "Date"]];
   const svcRows = [];
   (car.service || []).forEach(s => {
     (s.h || []).forEach(h => {
-      svcRows.push([s.i, s.n, h.k, h.i]);
+      if (svcIsEntry(s)) svcRows.push([s.i, s.n, '', '', 'Entry', h.d]);
+      else svcRows.push([s.i, s.n, h.k, h.i, 'Reminder', '']);
     });
   });
   const svcWS = XLSX.utils.aoa_to_sheet([...svcHeader, ...svcRows]);
@@ -821,7 +832,7 @@ function parseDashboardSheet(rows, car) {
         const interval = (nextKm && lastKm && nextKm > lastKm) ? (nextKm - lastKm) : (svcId === 'tyre' ? 10000 : 5000);
 
         if (lastKm) {
-          let s = car.service.find(x => x.i === svcId || x.n.toLowerCase() === svcName.toLowerCase());
+          let s = car.service.find(x => !svcIsEntry(x) && (x.i === svcId || x.n.toLowerCase() === svcName.toLowerCase()));
           if (!s) { s = { i: svcId, n: svcName, h: [] }; car.service.push(s); }
           s.h = [{ k: lastKm, i: interval }];
           importedSvc++;
@@ -904,7 +915,9 @@ function importFromExcel(e) {
           rows.forEach(r => {
             const sid = r["Service ID"] || 's_' + uid();
             const sname = r["Service Name"] || 'Service';
-            if (!map[sid]) map[sid] = { i: sid, n: sname, h: [] };
+            const isEntry = /entry/i.test(String(r["Type"] || ''));
+            if (!map[sid]) map[sid] = isEntry ? { i: sid, n: sname, t: 'e', h: [] } : { i: sid, n: sname, h: [] };
+            if (map[sid].t === 'e') { const dd = parseExcelDate(r["Date"] || r["Date of Service"]); if (/^\d{4}-\d{2}-\d{2}$/.test(dd)) map[sid].h.push({ d: dd }); return; }
             const kmVal = parseNum(r["Odometer (km)"] || r["Odometer"]);
             const intVal = parseNum(r["Interval (km)"] || r["Interval"]) || 5000;
             if (kmVal) map[sid].h.push({ k: kmVal, i: intVal });
@@ -1264,6 +1277,13 @@ function exportPdfReport(fromDate, toDate) {
     `;
   });
 
+  let entRows = '';
+  (car.service || []).forEach(s => {
+    if (!svcIsEntry(s)) return;
+    const ec = entryCalc(s); if (!ec) return;
+    entRows += `<tr><td><b>${esc(s.n)}</b></td><td class="num">${fmtDate(ec.last.d)}</td><td class="num">${fmt0(ec.days)} days</td><td class="num">${ec.h.length}</td></tr>`;
+  });
+
   let fillsRows = '';
   periodFills.slice().reverse().forEach(f => {
     fillsRows += `
@@ -1299,7 +1319,7 @@ function exportPdfReport(fromDate, toDate) {
 
     <div class="p-sec">
       <h2>Service & Maintenance Status</h2>
-      <table class="p-tbl">
+      ${(svcRows || !entRows) ? `<table class="p-tbl">
         <thead>
           <tr>
             <th>Service Name</th>
@@ -1313,7 +1333,18 @@ function exportPdfReport(fromDate, toDate) {
         <tbody>
           ${svcRows || '<tr><td colspan="6" style="text-align:center">No service records</td></tr>'}
         </tbody>
-      </table>
+      </table>` : ''}
+      ${entRows ? `<table class="p-tbl" style="margin-top:12px">
+        <thead>
+          <tr>
+            <th>Service Entry</th>
+            <th class="num">Last Done</th>
+            <th class="num">Days Since</th>
+            <th class="num">Times Done</th>
+          </tr>
+        </thead>
+        <tbody>${entRows}</tbody>
+      </table>` : ''}
     </div>
 
     <div class="p-sec">
@@ -1541,7 +1572,38 @@ function odometerHTML(km, animate) {
   return `<div class="odo-digits" role="img" aria-label="Odometer ${fmt0(km || 0)} kilometres">${h}<span class="odo-unit">km</span></div>`;
 }
 
+function entryRow(it, full) {
+  const c = entryCalc(it); if (!c) return '';
+  let h = `
+    <div class="svc">
+      <div class="svc-top">
+        <span class="svc-name">${esc(it.n)}</span>
+        <span class="svc-left num">${daysAgoTxt(c.days)}</span>
+      </div>
+      <div class="svc-meta num">
+        <span>Last done on ${fmtDate(c.last.d)}</span>
+        <span>${c.h.length} ${c.h.length === 1 ? 'entry' : 'entries'}</span>
+      </div>
+  `;
+  if (full) {
+    h += `
+      <div class="svc-actions">
+        <button class="btn small" data-act="svc-done" data-id="${esc(it.i)}">Mark done</button>
+        <button class="btn small ghost" data-act="svc-edit" data-id="${esc(it.i)}">Edit</button>
+      </div>
+    `;
+    const rows = c.h.slice().reverse().map((e, idx) => {
+      const j = c.h.length - 1 - idx, gap = j > 0 ? Math.round(dayNum(e.d) - dayNum(c.h[j - 1].d)) : null;
+      const ago = Math.max(0, Math.round(dayNum(today()) - dayNum(e.d)));
+      return `<div class="hrow num"><span>${fmtDate(e.d)} <span class="muted">&middot; ${daysAgoTxt(ago)}</span></span><span class="muted">${gap == null ? '' : fmt0(gap) + ' days after previous'}</span></div>`;
+    }).join('');
+    h += `<details class="hist"><summary>History (${c.h.length})</summary>${rows}</details>`;
+  }
+  return h + '</div>';
+}
+
 function svcRow(it, full) {
+  if (svcIsEntry(it)) return entryRow(it, full);
   const c = svcCalc(it);
   if (!c) return '';
   const leftTxt = c.left >= 0 ? fmt0(c.left) + ' km left' : 'Overdue by ' + fmt0(-c.left) + ' km';
@@ -1679,7 +1741,7 @@ function viewHome() {
   `;
 
   h += '<section class="sec"><h2>Service & Maintenance</h2><div class="panel">';
-  h += (car.service && car.service.length) ? car.service.map(it => svcRow(it, false)).join('') : '<div class="empty">No service reminders yet.<br><button class="btn small" data-act="svc-add">Add reminder</button></div>';
+  h += (car.service && car.service.length) ? car.service.map(it => svcRow(it, false)).join('') : '<div class="empty">No services yet.<br><button class="btn small" data-act="svc-add">Add service</button></div>';
   h += '</div></section>';
 
   const bal = c.balance, coId = c.coId, coN = payerName(coId);
@@ -1943,11 +2005,11 @@ function viewService() {
   const car = getActiveCar();
   let h = '<h1 class="page-title" style="margin-bottom:12px">Maintenance & Service</h1>';
   if (!car.service || !car.service.length) {
-    h += '<div class="panel empty">No service reminders for this car yet.</div>';
+    h += '<div class="panel empty">No services for this car yet.</div>';
   } else {
     h += `<div class="panel">${car.service.map(it => svcRow(it, true)).join('')}</div>`;
   }
-  h += `<div class="actions"><button class="btn ghost" data-act="svc-add">${PLUS} Add service reminder</button></div>`;
+  h += `<div class="actions"><button class="btn ghost" data-act="svc-add">${PLUS} Add Service</button></div>`;
   return h;
 }
 
@@ -2765,8 +2827,27 @@ function svcById(id) {
   return (car.service || []).find(x => x.i === id);
 }
 
+function entryDoneSheet(it) {
+  openSheet('svc-done', it.i, it.n + ' Done', `
+    <div class="field"><label for="s-date">Date of Service</label><input id="s-date" type="date" value="${today()}" max="${today()}"></div>
+    <p id="s-msg" class="preview" aria-live="polite"></p>
+    <div class="actions"><button class="btn" data-act="save-svc-done">Save</button></div>
+  `);
+}
+function saveEntryDone(it) {
+  const msg = $('#s-msg', sheet), d = $('#s-date', sheet).value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { msg.className = 'preview err'; msg.textContent = 'Please choose the date of service.'; return; }
+  if (d > today()) { msg.className = 'preview err'; msg.textContent = 'Date of service can\'t be in the future.'; return; }
+  if (it.h.some(e => e.d === d)) { msg.className = 'preview err'; msg.textContent = 'This date is already recorded.'; return; }
+  const car = getActiveCar();
+  car.service = car.service.map(x => x.i === it.i ? Object.assign({}, x, { h: x.h.concat([{ d }]) }) : x);
+  persistAll(); closeSheet(); render(); toast(it.n + ' entry added');
+}
+
 function svcDoneSheet(id) {
-  const it = svcById(id); if (!it) return; const c = svcCalc(it);
+  const it = svcById(id); if (!it) return;
+  if (svcIsEntry(it)) return entryDoneSheet(it);
+  const c = svcCalc(it);
   openSheet('svc-done', id, it.n + ' Done', `
     <div class="field"><label for="s-km">Odometer at service (km)</label><input id="s-km" type="text" inputmode="numeric" value="${C.odo == null ? '' : esc(C.odo)}"></div>
     <div class="field"><label for="s-int">Next due after (km interval)</label><input id="s-int" type="text" inputmode="numeric" value="${esc(c ? c.last.i : 5000)}"></div>
@@ -2776,6 +2857,7 @@ function svcDoneSheet(id) {
 }
 
 function saveSvcDone() {
+  { const it0 = svcById(sheet.dataset.id); if (svcIsEntry(it0)) return saveEntryDone(it0); }
   const id = sheet.dataset.id, it = svcById(id), km = parseNum($('#s-km', sheet).value), iv = parseNum($('#s-int', sheet).value), msg = $('#s-msg', sheet);
   const c = svcCalc(it);
   if (!(km > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter odometer reading.'; return; }
@@ -2786,8 +2868,36 @@ function saveSvcDone() {
   persistAll(); closeSheet(); render(); toast(it.n + ' marked as completed');
 }
 
+function entryEditSheet(it) {
+  const c = entryCalc(it);
+  openSheet('svc-edit', it.i, 'Edit ' + it.n, `
+    <div class="field"><label for="e-name">Service Type</label><input id="e-name" type="text" maxlength="40" value="${esc(it.n)}"></div>
+    <div class="field"><label for="e-date">Date of last service</label><input id="e-date" type="date" value="${esc(c.last.d)}" max="${today()}"></div>
+    <p id="e-msg" class="preview" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn" data-act="save-svc-edit">Save</button>
+      ${it.h.length > 1 ? '<button class="btn ghost" data-act="svc-undo">Undo last entry</button>' : ''}
+      <button class="btn danger" data-act="svc-del">Delete service</button>
+    </div>
+  `);
+}
+function saveEntryEdit(it) {
+  const name = $('#e-name', sheet).value.trim(), d = $('#e-date', sheet).value, msg = $('#e-msg', sheet);
+  if (!name) { msg.className = 'preview err'; msg.textContent = 'Please enter a name.'; return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { msg.className = 'preview err'; msg.textContent = 'Please choose the date of service.'; return; }
+  if (d > today()) { msg.className = 'preview err'; msg.textContent = 'Date of service can\'t be in the future.'; return; }
+  const cur = svcById(it.i), sorted = cur.h.slice().sort(entryByDate), l = sorted.length - 1;
+  if (sorted.some((e, j) => j !== l && e.d === d)) { msg.className = 'preview err'; msg.textContent = 'That date is already recorded.'; return; }
+  sorted[l] = { d };
+  const car = getActiveCar();
+  car.service = car.service.map(x => x.i === it.i ? Object.assign({}, x, { n: name, h: sorted.sort(entryByDate) }) : x);
+  persistAll(); closeSheet(); render(); toast('Service updated');
+}
+
 function svcEditSheet(id) {
-  const it = svcById(id); if (!it) return; const c = svcCalc(it);
+  const it = svcById(id); if (!it) return;
+  if (svcIsEntry(it)) return entryEditSheet(it);
+  const c = svcCalc(it);
   openSheet('svc-edit', id, 'Edit ' + it.n, `
     <div class="field"><label for="e-name">Service Name</label><input id="e-name" type="text" maxlength="40" value="${esc(it.n)}"></div>
     <div class="field"><label for="e-int">Interval for next service (km)</label><input id="e-int" type="text" inputmode="numeric" value="${esc(c ? c.last.i : 5000)}"></div>
@@ -2801,6 +2911,7 @@ function svcEditSheet(id) {
 }
 
 function saveSvcEdit() {
+  { const it0 = svcById(sheet.dataset.id); if (svcIsEntry(it0)) return saveEntryEdit(it0); }
   const id = sheet.dataset.id, name = $('#e-name', sheet).value.trim(), iv = parseNum($('#e-int', sheet).value), msg = $('#e-msg', sheet);
   if (!name) { msg.className = 'preview err'; msg.textContent = 'Please enter a name.'; return; }
   if (!(iv > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the interval in km.'; return; }
@@ -2816,24 +2927,48 @@ function saveSvcEdit() {
 }
 
 function svcAddSheet() {
-  openSheet('svc-add', '', 'Add Service Reminder', `
-    <div class="field"><label for="a-name">Service Type</label><input id="a-name" type="text" placeholder="e.g. Brake pads, Battery, Transmission"></div>
-    <div class="two">
+  openSheet('svc-add', '', 'Add Service', `
+    <div class="field"><label for="a-type">Select Service Type</label>
+      <select id="a-type"><option value="r">Service Reminder</option><option value="e">Service Entry</option></select></div>
+    <div class="field"><label for="a-name">Service Type</label><input id="a-name" type="text" maxlength="40" placeholder="e.g. Oil change, Plug change"></div>
+    <div class="two" id="a-rem">
       <div class="field"><label for="a-int">Every (km interval)</label><input id="a-int" type="text" inputmode="numeric" placeholder="e.g. 10000"></div>
       <div class="field"><label for="a-km">Last done at (km)</label><input id="a-km" type="text" inputmode="numeric" value="${C && C.odo != null ? esc(C.odo) : ''}"></div>
     </div>
+    <div class="field" id="a-ent" hidden><label for="a-date">Date of Service</label><input id="a-date" type="date" value="${today()}" max="${today()}"></div>
     <p id="a-msg" class="preview" aria-live="polite"></p>
-    <div class="actions"><button class="btn" data-act="save-svc-add">Add Reminder</button></div>
+    <div class="actions"><button class="btn" id="a-save" data-act="save-svc-add">Add Reminder</button></div>
   `);
   $('#a-name', sheet).focus();
 }
+function svcAddToggle() {
+  const isEntry = $('#a-type', sheet).value === 'e';
+  $('#a-rem', sheet).hidden = isEntry; $('#a-ent', sheet).hidden = !isEntry;
+  $('#a-save', sheet).textContent = isEntry ? 'Add Entry' : 'Add Reminder';
+  const m = $('#a-msg', sheet); m.className = 'preview'; m.textContent = '';
+}
 
 function saveSvcAdd() {
-  const name = $('#a-name', sheet).value.trim(), iv = parseNum($('#a-int', sheet).value), km = parseNum($('#a-km', sheet).value), msg = $('#a-msg', sheet);
-  if (!name) { msg.className = 'preview err'; msg.textContent = 'Please enter a service name.'; return; }
-  if (!(iv > 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the interval in km.'; return; }
-  if (!(km >= 0)) { msg.className = 'preview err'; msg.textContent = 'Please enter the odometer reading for last service.'; return; }
+  const isEntry = $('#a-type', sheet).value === 'e', name = $('#a-name', sheet).value.trim(), msg = $('#a-msg', sheet);
+  const bad = t => { msg.className = 'preview err'; msg.textContent = t; };
+  if (!name) return bad('Please enter the service type.');
   const car = getActiveCar();
+  if (isEntry) {
+    const d = $('#a-date', sheet).value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return bad('Please choose the date of service.');
+    if (d > today()) return bad('Date of service can\'t be in the future.');
+    const ex = (car.service || []).find(x => svcIsEntry(x) && x.n.toLowerCase() === name.toLowerCase());
+    if (ex) {                                     // same service again -> add another date to its history
+      if (ex.h.some(e => e.d === d)) return bad('This date is already recorded for ' + ex.n + '.');
+      car.service = car.service.map(x => x.i === ex.i ? Object.assign({}, x, { h: x.h.concat([{ d }]) }) : x);
+      persistAll(); closeSheet(); render(); toast('Entry added to ' + ex.n); return;
+    }
+    car.service = (car.service || []).concat([{ i: 's' + uid(), n: name, t: 'e', h: [{ d }] }]);
+    persistAll(); closeSheet(); render(); toast('Service entry added'); return;
+  }
+  const iv = parseNum($('#a-int', sheet).value), km = parseNum($('#a-km', sheet).value);
+  if (!(iv > 0)) return bad('Please enter the interval in km.');
+  if (!(km >= 0)) return bad('Please enter the odometer reading for last service.');
   car.service = (car.service || []).concat([{ i: 's' + uid(), n: name, h: [{ k: Math.round(km), i: Math.round(iv) }] }]);
   persistAll(); closeSheet(); render(); toast('Service reminder added');
 }
@@ -3024,14 +3159,14 @@ const H = {
   'svc-undo': el => confirmTap(el, 'Tap again to undo', () => {
     const id = sheet.dataset.id;
     const car = getActiveCar();
-    car.service = car.service.map(x => x.i === id ? Object.assign({}, x, { h: x.h.slice().sort((a, b) => a.k - b.k).slice(0, -1) }) : x);
+    car.service = car.service.map(x => x.i === id ? Object.assign({}, x, { h: x.h.slice().sort(svcIsEntry(x) ? entryByDate : ((a, b) => a.k - b.k)).slice(0, -1) }) : x);
     persistAll(); closeSheet(); render(); toast('Last service record removed');
   }),
   'svc-del': el => confirmTap(el, 'Tap again to delete', () => {
     const id = sheet.dataset.id;
     const car = getActiveCar();
     car.service = car.service.filter(x => x.i !== id);
-    persistAll(); closeSheet(); render(); toast('Service reminder deleted');
+    persistAll(); closeSheet(); render(); toast('Service deleted');
   }),
   'svc-add': () => svcAddSheet(),
   'save-svc-add': () => saveSvcAdd(),
@@ -3065,6 +3200,7 @@ const H = {
       car.fills = [];
       car.payments = [];
       (car.service || []).forEach(s => {
+        if (svcIsEntry(s)) return;
         s.h = [{ k: car.odometer || 0, i: (s.i === 'tyre' ? 10000 : 5000) }];
       });
       persistAll();
@@ -3101,6 +3237,7 @@ $('#json-restore-input').addEventListener('change', restoreFromJson);
 
 sheet.addEventListener('change', e => {
   const t = e.target;
+  if (t && t.id === 'a-type') { svcAddToggle(); return; }
   if (t && t.matches && t.matches('input[type=file][data-scan]')) {
     const f = t.files && t.files[0], kind = t.dataset.scan;
     t.value = '';
